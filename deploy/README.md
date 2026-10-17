@@ -38,6 +38,8 @@ The helper owns DNS, Tunnel ingress and Caddy registration. Inspect its dry-run 
 
 Every push to `main` runs Release. CI checks the app and deploy tooling, builds/publishes both architectures, attests the multi-platform digest, then moves the `main` tag. The first release can publish while the webhook is being provisioned: `DEPLOY_ENABLED=false` prevents an unconfigured production request.
 
+For this user-owned private repository, the official `@actions/attest` toolkit signs with GitHub's private Sigstore instance and `skipWrite: true`, then stores the bundle in GHCR with `@sigstore/oci`. GitHub's repository attestation storage requires Enterprise for private repositories. Both Release and Herman verify the registry bundle using `gh attestation verify --bundle-from-oci`; no extra signing key or public transparency-log disclosure is needed. See the [toolkit storage documentation](https://github.com/actions/toolkit/tree/main/packages/attest#storage).
+
 Once the receiver/Access routes and three production secrets exist:
 
 ```sh

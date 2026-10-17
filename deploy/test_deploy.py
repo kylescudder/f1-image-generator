@@ -125,6 +125,11 @@ class Deploy(unittest.TestCase):
     def test_success_is_pinned_and_new_arrival_remains_queued(self):
         def start(image):self.queue('arriving.json',30)
         with patch.object(module,'run',self.fake_run),patch.object(module,'compose',self.fake_compose),patch.object(module,'start',start):module.deploy(D,R)
+        verify = next(c for c in self.calls if c[:3] == ['gh', 'attestation', 'verify'])
+        self.assertIn('--bundle-from-oci', verify)
+        self.assertIn('--deny-self-hosted-runners', verify)
+        self.assertEqual(verify[verify.index('--source-digest') + 1], R)
+        self.assertEqual(verify[verify.index('--source-ref') + 1], 'refs/heads/main')
         self.assertIn(module.IMAGE+'@'+D,(self.app/'.env').read_text())
         self.assertTrue((module.STATE/'history.log').exists())
         self.assertTrue((module.REQUESTS/'arriving.json').exists())

@@ -180,9 +180,12 @@ def deploy(digest, requested_revision=None):
         pin(candidate)
         return
     log(f'verifying {candidate}')
-    run(['gh', 'attestation', 'verify', f'oci://{candidate}', '--bundle-from-oci', '--repo', REPO,
+    verify = ['gh', 'attestation', 'verify', f'oci://{candidate}', '--bundle-from-oci', '--repo', REPO,
          '--signer-workflow', REPO + '/.github/workflows/release.yml', '--source-ref', 'refs/heads/main',
-         '--deny-self-hosted-runners'], timeout=180)
+         '--deny-self-hosted-runners']
+    if requested_revision:
+        verify.extend(['--source-digest', requested_revision])
+    run(verify, timeout=180)
     run(['docker', 'pull', '--quiet', candidate], timeout=300)
     labels = json.loads(run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate])) or {}
     revision = labels.get('org.opencontainers.image.revision', '')

@@ -81,8 +81,15 @@ jobs:
       contents: read
       packages: write
       id-token: write
-      attestations: write
     steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: deploy/release/package-lock.json
       - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
           pattern: digest-*
@@ -103,11 +110,20 @@ jobs:
           digest=$(docker buildx imagetools inspect "$IMAGE:sha-$GITHUB_SHA" --format '{{json .Manifest}}' | jq -r .digest)
           echo "digest=$digest" >> "$GITHUB_OUTPUT"
           echo "Published \`$IMAGE@$digest\`" >> "$GITHUB_STEP_SUMMARY"
-      - uses: actions/attest-build-provenance@4d101475d8b20a2381f78447822ac1eab6504dd8 # v4.2.2
-        with:
-          subject-name: ${{ env.IMAGE }}
-          subject-digest: ${{ steps.manifest.outputs.digest }}
-          push-to-registry: true
+      # GitHub's attestations API excludes user-owned private repositories.
+      # The official toolkit supports skipWrite; store and verify its bundle in GHCR.
+      - name: Sign and publish registry-only provenance
+        env:
+          DIGEST: ${{ steps.manifest.outputs.digest }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          npm ci --ignore-scripts --prefix deploy/release
+          node deploy/release/attest.mjs
+          gh attestation verify "oci://$IMAGE@$DIGEST" --bundle-from-oci \
+            --repo "$GITHUB_REPOSITORY" \
+            --signer-workflow "$GITHUB_REPOSITORY/.github/workflows/release.yml" \
+            --source-ref refs/heads/main --source-digest "$GITHUB_SHA" \
+            --deny-self-hosted-runners
       # Move the main tag only after the attestation exists.
       - name: Tag main
         env:

@@ -1,0 +1,10 @@
+{
+  "name": "paddock-release",
+  "private": true,
+  "type": "module",
+  "engines": { "node": ">=24.15.0" },
+  "dependencies": {
+    "@actions/attest": "3.2.0",
+    "@sigstore/oci": "0.7.2"
+  }
+}
