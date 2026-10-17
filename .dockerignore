@@ -1,0 +1,13 @@
+.git
+.github
+node_modules
+dist
+data
+.env*
+secrets
+state
+backups
+deploy-spool
+__pycache__
+*.log
+.DS_Store

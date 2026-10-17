@@ -1,0 +1,50 @@
+name: paddock
+services:
+  web:
+    image: ${PADDOCK_IMAGE:?Select an attested release digest using deploy/herman-deploy.sh}
+    user: "501:20"
+    init: true
+    restart: unless-stopped
+    read_only: true
+    tmpfs:
+      - /tmp:size=128m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    mem_limit: 1g
+    cpus: 2.0
+    pids_limit: 128
+    environment:
+      NODE_ENV: production
+      PORT: "3000"
+      APP_URL: https://paddock.thescudders.org
+      DATA_DIR: /app/data
+      TZ: Europe/London
+      CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
+      CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
+      CLERK_OWNER_USER_ID: ${CLERK_OWNER_USER_ID:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
+      EMBY_URL: ${EMBY_URL:-}
+      EMBY_API_KEY: ${EMBY_API_KEY:-}
+    volumes:
+      - ${PADDOCK_DATA_DIR:-./data}:/app/data
+    networks:
+      platform-web:
+        aliases: [paddock]
+    healthcheck:
+      test:
+        [
+          CMD,
+          node,
+          -e,
+          "fetch('http://127.0.0.1:3000/api/health').then(r=>process.exit(r.ok?0:1)).catch(()=>process.exit(1))",
+        ]
+      interval: 15s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+    logging:
+      driver: json-file
+      options: { max-size: 10m, max-file: "3" }
+networks:
+  platform-web:
+    external: true

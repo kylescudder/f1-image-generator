@@ -1,0 +1,14 @@
+node_modules/
+dist/
+data/
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+.local/
+state/
+backups/
+deploy-spool/
+secrets/
+__pycache__/
