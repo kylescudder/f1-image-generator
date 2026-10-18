@@ -122,7 +122,7 @@ export class Artwork {
     return createHash("sha256")
       .update(
         JSON.stringify({
-          renderer: 3,
+          renderer: 4,
           season: event.season,
           round: event.round,
           venue: event.venueKey,
@@ -195,12 +195,15 @@ export class Artwork {
       .join("");
   }
   async svg(event: RaceEvent, session: SessionKey) {
-    const style = this.style(event);
     const background = await this.background(event);
-    const logo = this.manifest.logo;
     const scene = background
       ? `<image width="1920" height="1080" preserveAspectRatio="xMidYMid slice" href="data:image/png;base64,${(await readFile(background.file)).toString("base64")}"/>`
       : `<rect width="1920" height="1080" fill="#172322"/><path d="M-200 1080 700 350h800l-900 730z" fill="#223331"/><path d="M-50 1080 850 350h70l-900 730z" fill="#f14936"/><text x="960" y="630" text-anchor="middle" font-family="sans-serif" font-size="36" fill="#b5c1ba">Venue illustration pending</text>`;
+    return this.document(event, session, scene);
+  }
+  private document(event: RaceEvent, session: SessionKey, scene: string) {
+    const style = this.style(event);
+    const logo = this.manifest.logo;
     return `<svg xmlns="http://www.w3.org/2000/svg" width="1920" height="1080" viewBox="0 0 1920 1080"><title>${escape(`${event.season} ${event.name} — ${sessions[session]}`)}</title>${scene}<image x="${logo.x}" y="${logo.y}" width="${logo.width}" height="${logo.height}" href="data:image/svg+xml;base64,${this.logo}"/>${this.text(style.title.text || style.displayName.toUpperCase(), style.title, "wide", "center")}${this.text(sessions[session].toUpperCase(), style.session, "bold", "center")}${this.text(`${event.season} Round ${event.round}`, style.round, "bold", "right")}</svg>`;
   }
   async png(
@@ -214,13 +217,25 @@ export class Artwork {
     const file = path.join(this.dataDir, "renders", `${cacheKey}.png`);
     const render = (async () => {
       if (existsSync(file)) return readFile(file);
-      const svg = await this.svg(event, session);
-      const image = await sharp(Buffer.from(svg), {
+      const background = await this.background(event);
+      // Keep large raster data out of the SVG parser: base64 image attributes
+      // can exceed libxml's buffer limit even for valid provider output.
+      const svg = background
+        ? this.document(event, session, "")
+        : await this.svg(event, session);
+      const overlay = await sharp(Buffer.from(svg), {
         density: (72 * width) / 1920,
         limitInputPixels: 40_000_000,
       })
         .png({ compressionLevel: 6 })
         .toBuffer();
+      const image = background
+        ? await sharp(background.file, { limitInputPixels: 40_000_000 })
+            .resize(width, (width * 1080) / 1920, { fit: "cover" })
+            .composite([{ input: overlay }])
+            .png({ compressionLevel: 6 })
+            .toBuffer()
+        : overlay;
       const temporary = `${file}.${process.pid}.tmp`;
       await writeFile(temporary, image);
       await rename(temporary, file);
