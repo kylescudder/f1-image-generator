@@ -133,6 +133,9 @@ export const owner = {
       ),
     ),
   ),
+  usage: admin(async (_request, { services: { router } }) =>
+    Response.json(await router.usage()),
+  ),
   settings: admin(async (request, { services: { store, router, jobs } }) => {
     const settings = settingsSchema.parse(await request.json());
     if (settings.modelId) {

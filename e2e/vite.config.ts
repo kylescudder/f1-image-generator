@@ -54,6 +54,16 @@ const router = new OpenRouter(
   "fixture-key",
   "http://localhost:4318",
   (async (input, init) => {
+    if (String(input).endsWith("/key"))
+      return Response.json({
+        data: {
+          usage: 12.3456,
+          usage_daily: 0.0042,
+          usage_weekly: 1.25,
+          usage_monthly: 3.5,
+          byok_usage: 0,
+        },
+      });
     if (String(input).endsWith("/endpoints"))
       return Response.json({
         endpoints: [{ provider_tag: "fixture", supported_parameters: {} }],
@@ -150,7 +160,7 @@ useServices({
   router,
   emby,
   jobs: new Jobs(store, artwork, router, emby, true, true, String),
-  config,
+  config: { ...config, openrouterKey: "fixture-key" },
 });
 guardOverrides.current = {
   identity: () => ({ userId: "browser-fixture-owner", isAuthenticated: true }),
@@ -169,6 +179,7 @@ const handlers: Record<
   "/api/admin/settings": owner.settings,
   "/api/admin/events": owner.events,
   "/api/admin/models": owner.models,
+  "/api/admin/usage": owner.usage,
   "/api/admin/emby/libraries": owner.embyLibraries,
   "/api/admin/emby/shows": owner.embyShows,
   "/api/admin/emby/candidates": owner.embyCandidates,

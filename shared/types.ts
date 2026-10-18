@@ -73,6 +73,14 @@ export interface ImageModel {
   parameters: Record<string, Capability>;
   route: "images" | "chat";
 }
+export interface OpenRouterUsage {
+  total: number;
+  daily: number;
+  weekly: number;
+  monthly: number;
+  byokTotal: number | null;
+  fetchedAt: string;
+}
 export const overlayElements = {
   logo: "F1 logo",
   title: "Venue title",

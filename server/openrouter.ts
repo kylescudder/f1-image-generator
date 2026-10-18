@@ -1,9 +1,23 @@
 import { lookup } from "node:dns/promises";
 import { isIP } from "node:net";
-import type { Capability, ImageModel } from "../shared/types.ts";
+import { z } from "zod";
+import type {
+  Capability,
+  ImageModel,
+  OpenRouterUsage,
+} from "../shared/types.ts";
 import { Store } from "./db.ts";
 
 const base = "https://openrouter.ai/api/v1";
+const usageSchema = z.object({
+  data: z.object({
+    usage: z.number().nonnegative(),
+    usage_daily: z.number().nonnegative(),
+    usage_weekly: z.number().nonnegative(),
+    usage_monthly: z.number().nonnegative(),
+    byok_usage: z.number().nonnegative().nullish(),
+  }),
+});
 type RawModel = {
   id?: string;
   name?: string;
@@ -228,6 +242,30 @@ export class OpenRouter {
       "Content-Type": "application/json",
       "HTTP-Referer": this.appUrl,
       "X-OpenRouter-Title": "Paddock F1 Artwork",
+    };
+  }
+  async usage(): Promise<OpenRouterUsage> {
+    if (!this.key)
+      throw new Error("Configure OPENROUTER_API_KEY to view spending.");
+    const response = await this.fetcher(`${base}/key`, {
+      headers: this.headers(),
+      signal: AbortSignal.timeout(15000),
+    });
+    if (!response.ok)
+      throw new Error(
+        `OpenRouter spending is unavailable (${response.status}).`,
+      );
+    const result = usageSchema.safeParse(await response.json());
+    if (!result.success)
+      throw new Error("OpenRouter returned invalid spending data.");
+    const { data } = result.data;
+    return {
+      total: data.usage,
+      daily: data.usage_daily,
+      weekly: data.usage_weekly,
+      monthly: data.usage_monthly,
+      byokTotal: data.byok_usage ?? null,
+      fetchedAt: new Date().toISOString(),
     };
   }
   async models(
