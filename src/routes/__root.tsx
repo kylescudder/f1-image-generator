@@ -60,6 +60,45 @@ function RootComponent() {
           <ClerkProvider
             publishableKey={app.clerkPublishableKey}
             afterSignOutUrl="/"
+            appearance={{
+              variables: {
+                colorPrimary: "#f45540",
+                colorPrimaryForeground: "#101111",
+                colorBackground: "#171a18",
+                colorForeground: "#edece7",
+                colorMutedForeground: "#a8b0a5",
+                colorNeutral: "#edece7",
+                colorInput: "#101111",
+                colorInputForeground: "#edece7",
+                colorBorder: "#292d2a",
+                colorRing: "#f45540",
+                colorDanger: "#ff8b7c",
+                colorSuccess: "#a8bca4",
+                fontFamily: '"DM Sans", sans-serif',
+                fontFamilyButtons: '"DM Sans", sans-serif',
+                borderRadius: "0.5rem",
+              },
+              elements: {
+                cardBox: {
+                  border: "1px solid #292d2a",
+                  boxShadow: "none",
+                },
+                card: { boxShadow: "none" },
+                headerTitle: {
+                  fontFamily: '"Space Grotesk", sans-serif',
+                  fontSize: "1.375rem",
+                  fontWeight: 500,
+                  letterSpacing: "-0.5px",
+                },
+                formButtonPrimary: {
+                  backgroundImage: "none",
+                  boxShadow: "none",
+                  minHeight: "40px",
+                },
+                formFieldInput: { minHeight: "40px" },
+                footer: { background: "#131614" },
+              },
+            }}
           >
             {content}
           </ClerkProvider>
