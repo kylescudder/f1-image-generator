@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import { SignIn, UserButton, useAuth } from "@clerk/react";
+import { Link } from "@tanstack/react-router";
+import { useQuery } from "@tanstack/react-query";
+import { SignIn, UserButton, useAuth } from "@clerk/tanstack-react-start";
 import {
   ArrowDownToLine,
   ArrowLeft,
@@ -30,6 +32,7 @@ import {
   X,
   Zap,
 } from "lucide-react";
+import { libraryQuery } from "../lib/library";
 import {
   sessions,
   type AdminStatus,
@@ -39,7 +42,7 @@ import {
   type LibraryEvent,
   type PublicLibrary,
   type SessionKey,
-} from "../shared/types.ts";
+} from "../../shared/types.ts";
 
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, {
@@ -89,7 +92,7 @@ const errorMessage = (error: unknown) =>
 
 function Brand() {
   return (
-    <a href="/" className="brand" aria-label="Paddock home">
+    <Link to="/" className="brand" aria-label="Paddock home">
       <span className="brand-mark">
         <i />
         <i />
@@ -98,7 +101,7 @@ function Brand() {
       <span>
         paddock<span className="brand-dot">.</span>
       </span>
-    </a>
+    </Link>
   );
 }
 function Badge({
@@ -112,11 +115,11 @@ function Badge({
 }
 
 export function App({
-  authConfigured,
-  hasClerk,
+  admin,
+  children,
 }: {
-  authConfigured: boolean;
-  hasClerk: boolean;
+  admin: boolean;
+  children: (notify: (text: string) => void) => ReactNode;
 }) {
   const [toast, setToast] = useState("");
   const toastTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
@@ -125,7 +128,6 @@ export function App({
     clearTimeout(toastTimer.current);
     toastTimer.current = setTimeout(() => setToast(""), 6000);
   };
-  const admin = window.location.pathname.startsWith("/admin");
   return (
     <>
       <header className="topbar">
@@ -133,23 +135,15 @@ export function App({
         <div className="topbar-middle">
           <span className="tiny-square" /> THE FORMULA 1 ARTWORK COLLECTION
         </div>
-        <a
+        <Link
           className={`admin-link ${admin ? "active" : ""}`}
-          href={admin ? "/" : "/admin"}
+          to={admin ? "/" : "/admin"}
         >
           {admin ? <ArrowLeft size={14} /> : <LockKeyhole size={14} />}
           <span>{admin ? "Back to collection" : "Owner workspace"}</span>
-        </a>
+        </Link>
       </header>
-      {admin ? (
-        <AdminGate
-          authConfigured={authConfigured}
-          hasClerk={hasClerk}
-          notify={notify}
-        />
-      ) : (
-        <Gallery notify={notify} />
-      )}
+      {children(notify)}
       {toast && (
         <div className="toast" role="status">
           <Check size={17} />
@@ -166,12 +160,18 @@ export function App({
   );
 }
 
-function Gallery({ notify }: { notify: (text: string) => void }) {
-  const [year, setYear] = useState(
-    () => Number(new URLSearchParams(location.search).get("season")) || 0,
-  );
-  const [data, setData] = useState<PublicLibrary | null>(null);
-  const [error, setError] = useState("");
+export function Gallery({
+  notify,
+  year,
+  onYear,
+}: {
+  notify: (text: string) => void;
+  year: number;
+  onYear: (season: number) => void;
+}) {
+  const library = useQuery(libraryQuery(year));
+  const data: PublicLibrary | null = library.data ?? null;
+  const error = library.error ? errorMessage(library.error) : "";
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "sprint" | "archive">("all");
   const [count, setCount] = useState(6);
@@ -180,26 +180,6 @@ function Gallery({ notify }: { notify: (text: string) => void }) {
     session: SessionKey;
   } | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  useEffect(() => {
-    const controller = new AbortController();
-    const load = () =>
-      request<PublicLibrary>(`/api/library${year ? `?season=${year}` : ""}`, {
-        signal: controller.signal,
-      })
-        .then((result) => {
-          setData(result);
-          setError("");
-        })
-        .catch((error) => {
-          if (!controller.signal.aborted) setError(errorMessage(error));
-        });
-    void load();
-    const timer = setInterval(load, 60000);
-    return () => {
-      controller.abort();
-      clearInterval(timer);
-    };
-  }, [year]);
   useEffect(() => {
     const handler = (event: KeyboardEvent) => {
       if (
@@ -216,11 +196,10 @@ function Gallery({ notify }: { notify: (text: string) => void }) {
     return () => window.removeEventListener("keydown", handler);
   }, []);
   const chooseYear = (value: number) => {
-    setYear(value);
+    onYear(value);
     setSearch("");
     setFilter("all");
     setCount(6);
-    history.replaceState(null, "", `/?season=${value}`);
   };
   const active = data?.events.filter((event) => !event.cancelled) || [];
   const archived = data?.events.filter((event) => event.cancelled) || [];
@@ -244,11 +223,11 @@ function Gallery({ notify }: { notify: (text: string) => void }) {
     <div className="app-layout">
       <aside className="sidebar">
         <div className="sidebar-section-label">YOUR COLLECTION</div>
-        <a href="/" className="nav-item selected">
+        <Link to="/" className="nav-item selected">
           <Layers3 size={17} />
           Season library
           <ArrowUpRight size={14} />
-        </a>
+        </Link>
         <div className="sidebar-rule" />
         <div className="sidebar-section-label">CHAMPIONSHIP SEASONS</div>
         <div className="season-nav">
@@ -282,11 +261,11 @@ function Gallery({ notify }: { notify: (text: string) => void }) {
             Checks every 6 hours <Clock3 size={12} />
           </span>
         </div>
-        <a className="sidebar-bottom" href="/admin">
+        <Link className="sidebar-bottom" to="/admin">
           <Settings2 size={15} />
           Manage library
           <ArrowUpRight size={13} />
-        </a>
+        </Link>
       </aside>
       <main className="collection">
         <div className="collection-eyebrow">
@@ -794,7 +773,7 @@ function ImageViewer({
   );
 }
 
-function AdminGate({
+export function AdminGate({
   authConfigured,
   hasClerk,
   notify,
@@ -833,10 +812,10 @@ function AdminGate({
             Generation requires your owner login
           </span>
         </div>
-        <a className="button secondary" href="/">
+        <Link className="button secondary" to="/">
           <ArrowLeft size={15} />
           Back to collection
-        </a>
+        </Link>
       </main>
     );
   return <AuthenticatedAdmin notify={notify} />;
@@ -874,9 +853,9 @@ function AuthenticatedAdmin({ notify }: { notify: (text: string) => void }) {
         <h1>This workspace is private.</h1>
         <p>{error}</p>
         <UserButton />
-        <a className="text-link" href="/">
+        <Link className="text-link" to="/">
           Return to the collection <ArrowRight size={15} />
-        </a>
+        </Link>
       </main>
     );
   return owner ? (

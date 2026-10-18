@@ -94,8 +94,16 @@ export class Artwork {
       round: { fontSize: 60, fill: "#faedde", baselineY: 1024, rightX: 1870 },
     };
   }
-  background(event: RaceEvent): { file: string; version: string } | null {
-    const generated = this.store.latestBackground(event.venueKey, event.season);
+  // Pass one index when rendering a list to avoid a query per weekend.
+  async background(
+    event: RaceEvent,
+    index?: Map<string, { file: string; version: string }>,
+  ): Promise<{ file: string; version: string } | null> {
+    const generated = await this.store.latestBackground(
+      event.venueKey,
+      event.season,
+      index,
+    );
     if (generated && existsSync(generated.file)) return generated;
     const key = this.style(event).backgroundKey;
     const source = key && this.manifest.backgrounds[key];
@@ -106,7 +114,11 @@ export class Artwork {
         }
       : null;
   }
-  version(event: RaceEvent, session?: SessionKey) {
+  async version(
+    event: RaceEvent,
+    session?: SessionKey,
+    index?: Map<string, { file: string; version: string }>,
+  ) {
     return createHash("sha256")
       .update(
         JSON.stringify({
@@ -116,22 +128,35 @@ export class Artwork {
           venue: event.venueKey,
           session,
           style: this.style(event),
-          background: this.background(event)?.version,
+          background: (await this.background(event, index))?.version,
         }),
       )
       .digest("hex")
       .slice(0, 20);
   }
-  libraryEvent(event: RaceEvent): LibraryEvent {
-    const background = this.background(event);
+  async libraryEvents(events: RaceEvent[]): Promise<LibraryEvent[]> {
+    const index = await this.store.backgrounds();
+    return Promise.all(events.map((event) => this.libraryEvent(event, index)));
+  }
+  async libraryEvent(
+    event: RaceEvent,
+    index?: Map<string, { file: string; version: string }>,
+  ): Promise<LibraryEvent> {
+    index ??= await this.store.backgrounds();
+    const background = await this.background(event, index);
+    const versions = await Promise.all(
+      sessionKeys(event.sprint).map((session) =>
+        this.version(event, session, index),
+      ),
+    );
     return {
       ...event,
       displayName: this.style(event).displayName,
       backgroundReady: Boolean(background),
       backgroundVersion: background?.version || null,
-      images: sessionKeys(event.sprint).map((session) => {
+      images: sessionKeys(event.sprint).map((session, position) => {
         const base = `/images/${event.season}/${event.slug}/${session}`;
-        const version = this.version(event, session);
+        const version = versions[position];
         return {
           session,
           label: sessions[session],
@@ -171,7 +196,7 @@ export class Artwork {
   }
   async svg(event: RaceEvent, session: SessionKey) {
     const style = this.style(event);
-    const background = this.background(event);
+    const background = await this.background(event);
     const logo = this.manifest.logo;
     const scene = background
       ? `<image width="1920" height="1080" preserveAspectRatio="xMidYMid slice" href="data:image/png;base64,${(await readFile(background.file)).toString("base64")}"/>`
@@ -183,7 +208,7 @@ export class Artwork {
     session: SessionKey,
     width = 3840,
   ): Promise<Buffer> {
-    const cacheKey = `${this.version(event, session)}-${width}`;
+    const cacheKey = `${await this.version(event, session)}-${width}`;
     const existing = this.pending.get(cacheKey);
     if (existing) return existing;
     const file = path.join(this.dataDir, "renders", `${cacheKey}.png`);

@@ -27,6 +27,7 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
         WEBHOOK_SECRET_FILE: join(directory, "secret"),
         SPOOL_DIR: directory,
         PORT: "19000",
+        DEPLOYED_STATE_FILE: join(directory, "deployment.json"),
       },
       stdio: ["ignore", "pipe", "pipe"],
     },
@@ -62,6 +63,33 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
     const signed = (body) =>
       "sha256=" + createHmac("sha256", secret).update(body).digest("hex");
     const body = JSON.stringify(value);
+    const status = () => fetch("http://127.0.0.1:19000/hooks/paddock");
+    assert.deepEqual(await (await status()).json(), { status: "pending" });
+    for (const invalid of [
+      "{",
+      JSON.stringify({ revision: value.revision, image: "untrusted:main" }),
+    ]) {
+      writeFileSync(join(directory, "deployment.json"), invalid);
+      assert.deepEqual(await (await status()).json(), { status: "pending" });
+    }
+    const deployed = {
+      revision: value.revision,
+      image: "ghcr.io/kylescudder/f1-image-generator@" + value.digest,
+    };
+    writeFileSync(
+      join(directory, "deployment.json"),
+      JSON.stringify({ ...deployed, private: "must not be returned" }),
+    );
+    const accepted = await status();
+    assert.equal(accepted.headers.get("Cache-Control"), "no-store");
+    assert.deepEqual(await accepted.json(), {
+      status: "deployed",
+      ...deployed,
+    });
+    assert.equal(
+      (await fetch("http://127.0.0.1:19000/hooks/paddock?x=1")).status,
+      404,
+    );
     const denied = await send(body, "sha256=wrong");
     assert.equal(denied.status, 401);
     assert.equal(denied.headers.get("X-Paddock-Deploy-Hook"), "1");

@@ -9,17 +9,21 @@ A calendar-aware Formula 1 artwork library for **paddock.thescudders.org**, host
 - Six-hour calendar checks and **Sync now**. Stable event identities survive round changes and relocations; cancellations are archived and completed seasons freeze after their final calendar.
 - **Clerk owner-only administration.** Every protected API checks the verified Clerk user ID against `CLERK_OWNER_USER_ID`. Other accounts cannot generate, change settings, inspect Emby, or run sync controls. Missing owner configuration denies all admin access and disables scheduled inference.
 - **OpenRouter image generation.** Settings discovers image models live, combining the dedicated Image API catalogue with older chat image models. No hardcoded model list or default paid model. Provider capabilities are checked before requests; unsupported parameters are omitted. Catalogue caching is one hour, with refresh and stale-cache indicators.
-- Missing venue backgrounds are generated once and reused. Initially five attempts per UTC month, persisted in SQLite, including failures. Allowance and model are owner settings. Existing background/session/round composition makes no inference calls.
+- Missing venue backgrounds are generated once and reused. Initially five attempts per UTC month, persisted in PostgreSQL, including failures. Allowance and model are owner settings. Existing background/session/round composition makes no inference calls.
 - Reviewed Emby episode mappings and automatic direct PNG uploads. The app updates Emby's stored artwork rather than relying on changed hosted bytes.
 
 ## Local development
 
-Requires Node **24+**, npm, and Python 3 only for optional archive reimport.
+Built with **TanStack Start** (React, TypeScript, Router and Query) on **Bun**, with **PostgreSQL** and **Clerk**. Requires Bun **1.4+**, Docker for a local database, and Python 3 only for optional archive reimport.
 
 ```sh
-npm ci
-npm run setup
-npm run dev
+bun install
+docker run -d --name paddock-db -e POSTGRES_PASSWORD=paddock -e POSTGRES_DB=paddock_dev \
+  -p 127.0.0.1:55432:5432 postgres:18.6-alpine
+cp .env.example .env
+bun run setup
+bun run db:migrate
+bun run dev
 ```
 
 Open **http://localhost:3000**. The gallery works immediately without credentials. Setup downloads matching font families from official F1 assets into ignored `data/fonts/`; production images cache them for offline startup. Fonts are rendered into vector paths and are not served as font files.
@@ -27,10 +31,13 @@ Open **http://localhost:3000**. The gallery works immediately without credential
 For integrations, copy `.env.example` to `.env` and supply environment values locally or on Herman. Never commit `.env` or paste keys into issues/chat.
 
 ```sh
-npm test
-npm run build
-NODE_ENV=production npm start
+docker exec paddock-db psql -U postgres -c "CREATE DATABASE paddock_test"
+bun run test      # needs the local database; uses paddock_test, never paddock_dev
+bun run build
+bun run start
 ```
+
+Tests refuse to run against any database whose name does not end in `_test`; override the default with `TEST_DATABASE_URL`.
 
 Standalone Docker: `docker compose -f compose.local.yaml up --build -d`. Herman uses root `compose.yaml` with its existing platform network and an attested immutable image.
 
@@ -54,14 +61,14 @@ Mappings use persistent event/session identities rather than round numbers. Padd
 
 See [Herman deployment](deploy/README.md) and [Herman handoff](docs/herman-handoff.md). GitHub Actions publishes attested multi-platform images; Herman's existing Cloudflare Access → Tunnel → Caddy pattern queues verified deployments with backups and rollback.
 
-SQLite state, generated backgrounds and cached exports live in persistent `data/`. Run one app instance for the scheduler/queue; no separate Postgres service is needed. Later-season background overrides do not change completed seasons.
+State lives in PostgreSQL (`paddock`, via Herman's existing platform database). Generated backgrounds and cached exports live in persistent `data/`. Run one app instance: its in-process queue/scheduler owns inference and calendar checks. Later-season background overrides do not change completed seasons.
 
 ## Sources and checks
 
 - [Artwork audit](docs/artwork-audit.md): 48 Illustrator files, 126 artboards, 25 original backgrounds.
 - [Font sources](docs/font-sources.md); `assets/artwork.json` contains measured layouts and provenance.
 - `python3 scripts/import-archive.py --archive ~/Archive.zip` reproduces the import with checked-in measurements. Optional `--inspect-ai` rebuilds measurements using PyMuPDF.
-- `npm test` checks authorization, limits, discovery, rendering, calendar reconciliation and Emby uploads with isolated test providers.
-- Deploy tests cover signature/timestamp/path/queue gates, provenance rejection, backup failure and rollback.
+- `bun run test` checks authorization, limits, discovery, rendering, calendar reconciliation and Emby uploads with isolated test providers.
+- Deploy tests cover signature/timestamp/path/queue gates, the acknowledgement endpoint, provenance rejection, backup and migration failure, failed acceptance and rollback. CI also enforces Prettier formatting (`bun run format:check`).
 
-Primary references: [Clerk](https://clerk.com/docs/reference/express/overview), [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/image-generation), [Jolpica](https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/races.md), [Emby](https://dev.emby.media/reference/RestAPI/ImageService/postItemsByIdImagesByType.html).
+Primary references: [Clerk](https://clerk.com/docs/references/tanstack-react-start/overview), [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/image-generation), [Jolpica](https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/races.md), [Emby](https://dev.emby.media/reference/RestAPI/ImageService/postItemsByIdImagesByType.html).

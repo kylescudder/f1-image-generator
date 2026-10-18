@@ -14,9 +14,11 @@ services:
       PORT: "9000"
       SPOOL_DIR: /spool
       WEBHOOK_SECRET_FILE: /run/secrets/deploy_webhook_secret
+      DEPLOYED_STATE_FILE: /release-state/deployment.json
     volumes:
       - ./receiver/server.mjs:/app/server.mjs:ro
       - ${DEPLOY_SPOOL_DIR:-../deploy-spool}/requests:/spool/requests
+      - ../state/public:/release-state:ro
     secrets:
       - deploy_webhook_secret
     networks:

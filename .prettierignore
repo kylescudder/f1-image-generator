@@ -1,0 +1,8 @@
+dist
+node_modules
+data
+src/routeTree.gen.ts
+assets
+bun.lock
+deploy/release
+*.md
