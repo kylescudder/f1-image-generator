@@ -74,7 +74,7 @@ test("receiver enforces signature, timestamp, size, exact path and queue limit",
     }
     const deployed = {
       revision: value.revision,
-      image: "ghcr.io/kylescudder/f1-image-generator@" + value.digest,
+      image: "ghcr.io/kylescudder/paddock@" + value.digest,
     };
     writeFileSync(
       join(directory, "deployment.json"),

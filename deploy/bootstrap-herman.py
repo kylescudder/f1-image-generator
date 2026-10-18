@@ -33,12 +33,12 @@ def main():
     if not hook.exists():
         hook.write_text(f'DEPLOY_HOOK_USER={os.getuid()}:{os.getgid()}\nDEPLOY_SPOOL_DIR={APP}/deploy-spool\nDEPLOY_WEBHOOK_SECRET_FILE={secret}\nPLATFORM_WEB_NETWORK=platform-web\n')
         hook.chmod(0o600)
-    subprocess.run(['gh', 'api', '--method', 'PUT', 'repos/kylescudder/f1-image-generator/environments/production', '--input', '-'], input=json.dumps({'deployment_branch_policy': {'protected_branches': False, 'custom_branch_policies': True}}).encode(), stdout=subprocess.DEVNULL, check=True)
-    policies = json.loads(subprocess.check_output(['gh', 'api', 'repos/kylescudder/f1-image-generator/environments/production/deployment-branch-policies']))
+    subprocess.run(['gh', 'api', '--method', 'PUT', 'repos/kylescudder/paddock/environments/production', '--input', '-'], input=json.dumps({'deployment_branch_policy': {'protected_branches': False, 'custom_branch_policies': True}}).encode(), stdout=subprocess.DEVNULL, check=True)
+    policies = json.loads(subprocess.check_output(['gh', 'api', 'repos/kylescudder/paddock/environments/production/deployment-branch-policies']))
     if not any(item['name'] == 'main' for item in policies.get('branch_policies', [])):
-        subprocess.run(['gh', 'api', '--method', 'POST', 'repos/kylescudder/f1-image-generator/environments/production/deployment-branch-policies', '-f', 'name=main', '-f', 'type=branch'], stdout=subprocess.DEVNULL, check=True)
+        subprocess.run(['gh', 'api', '--method', 'POST', 'repos/kylescudder/paddock/environments/production/deployment-branch-policies', '-f', 'name=main', '-f', 'type=branch'], stdout=subprocess.DEVNULL, check=True)
     with secret.open('rb') as stream:
-        subprocess.run(['gh', 'secret', 'set', 'DEPLOY_WEBHOOK_SECRET', '--repo', 'kylescudder/f1-image-generator', '--env', 'production'], stdin=stream, check=True)
+        subprocess.run(['gh', 'secret', 'set', 'DEPLOY_WEBHOOK_SECRET', '--repo', 'kylescudder/paddock', '--env', 'production'], stdin=stream, check=True)
     subprocess.run(['docker', 'compose', '-f', 'deploy/compose.deploy-hook.yaml', '--env-file', '.env.deploy-hook', 'up', '-d', '--wait'], cwd=APP, check=True)
     subprocess.run(['python3', '-B', 'deploy/install-launchd.py'], cwd=APP, check=True)
     print('Host receiver, protected runtime template, signing secret, and LaunchAgent are prepared.')

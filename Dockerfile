@@ -11,7 +11,7 @@ WORKDIR /app
 ENV NODE_ENV=production PORT=3000 DATA_DIR=/app/data HOME=/tmp
 ARG PADDOCK_REVISION=development
 ENV PADDOCK_REVISION=$PADDOCK_REVISION
-LABEL org.opencontainers.image.source="https://github.com/kylescudder/f1-image-generator"
+LABEL org.opencontainers.image.source="https://github.com/kylescudder/paddock"
 LABEL org.opencontainers.image.revision=$PADDOCK_REVISION
 COPY package.json bun.lock ./
 RUN bun install --frozen-lockfile --production --network-concurrency 8

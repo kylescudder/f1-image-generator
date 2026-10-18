@@ -11,8 +11,8 @@ import sys
 import time
 import uuid
 
-IMAGE = 'ghcr.io/kylescudder/f1-image-generator'
-REPO = 'kylescudder/f1-image-generator'
+IMAGE = 'ghcr.io/kylescudder/paddock'
+REPO = 'kylescudder/paddock'
 DIGEST = re.compile(r'sha256:[0-9a-f]{64}\Z')
 REVISION = re.compile(r'[0-9a-f]{40}\Z')
 APP = Path(os.environ.get('APP_DIR', Path(__file__).resolve().parents[1]))

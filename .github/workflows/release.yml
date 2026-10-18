@@ -15,7 +15,7 @@ concurrency:
   cancel-in-progress: false
 
 env:
-  IMAGE: ghcr.io/kylescudder/f1-image-generator
+  IMAGE: ghcr.io/kylescudder/paddock
 
 jobs:
   ci:

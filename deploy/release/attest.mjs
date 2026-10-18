@@ -6,8 +6,8 @@ import { attachArtifactToImage, getRegistryCredentials } from "@sigstore/oci";
 
 const { IMAGE, DIGEST, GH_TOKEN, GITHUB_REPOSITORY, GITHUB_REF } = process.env;
 if (
-  IMAGE !== "ghcr.io/kylescudder/f1-image-generator" ||
-  GITHUB_REPOSITORY !== "kylescudder/f1-image-generator" ||
+  IMAGE !== "ghcr.io/kylescudder/paddock" ||
+  GITHUB_REPOSITORY !== "kylescudder/paddock" ||
   GITHUB_REF !== "refs/heads/main" ||
   !/^sha256:[a-f0-9]{64}$/.test(DIGEST ?? "") ||
   !GH_TOKEN
