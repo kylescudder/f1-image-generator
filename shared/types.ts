@@ -55,6 +55,7 @@ export interface AppSettings {
   resolution: string;
   quality: string;
   embyLibraryId: string;
+  embySeriesId: string;
 }
 export interface Capability {
   type: string;
@@ -89,6 +90,11 @@ export interface EmbyMapping {
   lastImageVersion: string | null;
   lastSyncedAt: string | null;
   error: string | null;
+}
+export interface EmbyShow {
+  id: string;
+  name: string;
+  path?: string;
 }
 export interface EmbyCandidate {
   itemId: string;

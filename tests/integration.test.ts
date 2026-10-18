@@ -475,6 +475,16 @@ test("admin routes deny anonymous users and cross-origin mutations before any in
       });
     assert.equal((await send("")).status, 401);
     assert.equal(
+      (
+        await owner.embyShows({
+          request: new Request(
+            "https://paddock.thescudders.org/api/admin/emby/shows?libraryId=tv",
+          ),
+        })
+      ).status,
+      401,
+    );
+    assert.equal(
       (await send("user_signed_in", "https://attacker.invalid")).status,
       403,
     );
@@ -502,6 +512,16 @@ test("without Clerk keys all admin APIs fail closed", async () => {
       request: new Request("https://paddock.thescudders.org/api/admin/status"),
     });
     assert.equal(response.status, 503);
+    assert.equal(
+      (
+        await owner.embyShows({
+          request: new Request(
+            "https://paddock.thescudders.org/api/admin/emby/shows?libraryId=tv",
+          ),
+        })
+      ).status,
+      503,
+    );
   } finally {
     guardOverrides.current = undefined;
     useServices(undefined);
@@ -523,6 +543,156 @@ test("rendered Singapore sprint output is an actual 4K PNG and SVG uses paths in
     assert.equal(metadata.width, 3840);
     assert.equal(metadata.height, 2160);
     assert.equal(metadata.format, "png");
+  } finally {
+    f.close();
+  }
+});
+
+test("Emby selection persists a show and inspects only its episodes across seasons", async () => {
+  const f = await fixture();
+  await seedCalendars(f.store, root);
+  const emby = new Emby(
+    f.store,
+    {} as Artwork,
+    "http://isolated-emby.invalid",
+    "fixture",
+    (async (input) => {
+      const url = new URL(String(input));
+      if (url.pathname === "/Library/VirtualFolders/Query")
+        return Response.json({
+          Items: [
+            { ItemId: "tv", Name: "TV shows", CollectionType: "tvshows" },
+          ],
+        });
+      if (url.searchParams.get("IncludeItemTypes") === "Series") {
+        assert.equal(url.searchParams.get("ParentId"), "tv");
+        return Response.json({
+          Items: [
+            { Id: "f1", Name: "Formula 1", Path: "/tv/Formula 1" },
+            { Id: "other", Name: "Other show" },
+          ],
+        });
+      }
+      assert.equal(url.searchParams.get("ParentId"), "f1");
+      assert.equal(url.searchParams.get("Recursive"), "true");
+      return Response.json({
+        Items: [
+          {
+            Id: "episode",
+            Name: "Episode 1",
+            Path: "/tv/Formula 1/Season 2026/Singapore/Sprint Qualifying/video.mkv",
+          },
+        ],
+      });
+    }) as typeof fetch,
+  );
+  useServices({
+    store: f.store,
+    emby,
+    router: {} as OpenRouter,
+    jobs: { autoGenerate: async () => {} },
+    config,
+  } as unknown as Services);
+  guardOverrides.current = {
+    identity: () => ({ userId: "fixture-owner", isAuthenticated: true }),
+    config: {
+      clerkPublishableKey: "",
+      clerkSecretKey: "",
+      appUrl: "https://paddock.test",
+    },
+  };
+  const request = (route: string, body?: unknown) => ({
+    request: new Request(
+      `https://paddock.test/api/admin/${route}`,
+      body
+        ? {
+            method: "POST",
+            headers: {
+              Origin: "https://paddock.test",
+              "Content-Type": "application/json",
+            },
+            body: JSON.stringify(body),
+          }
+        : undefined,
+    ),
+  });
+  try {
+    assert.deepEqual(
+      await (await owner.embyShows(request("emby/shows?libraryId=tv"))).json(),
+      [
+        { id: "f1", name: "Formula 1", path: "/tv/Formula 1" },
+        { id: "other", name: "Other show" },
+      ],
+    );
+    const settings = {
+      ...(await f.store.settings()),
+      embyLibraryId: "tv",
+      embySeriesId: "f1",
+    };
+    assert.equal(
+      (await owner.settings(request("settings", settings))).status,
+      200,
+    );
+    const status = await (await owner.status(request("status"))).json();
+    assert.equal(status.settings.embySeriesId, "f1");
+    const response = await owner.embyCandidates(request("emby/candidates"));
+    assert.equal(response.status, 200);
+    const candidates = await response.json();
+    assert.deepEqual(
+      candidates.map((item: { itemId: string }) => item.itemId),
+      ["episode"],
+    );
+    assert.deepEqual(candidates[0].candidates, [
+      { eventId: "2026-singapore", session: "sprint-qualifying", score: 100 },
+    ]);
+    await f.store.set("settings", {
+      ...settings,
+      embySeriesId: "removed-show",
+    });
+    const stale = await owner.embyCandidates(request("emby/candidates"));
+    assert.equal(stale.status, 500);
+    assert.match((await stale.json()).error, /no longer in this library/);
+    assert.equal((await owner.embyShows(request("emby/shows"))).status, 400);
+  } finally {
+    guardOverrides.current = undefined;
+    useServices(undefined);
+    f.close();
+  }
+});
+
+test("Emby show browsing includes shows beyond the first page and keeps legacy library settings", async () => {
+  const f = await fixture();
+  const emby = new Emby(
+    f.store,
+    {} as Artwork,
+    "http://isolated-emby.invalid",
+    "fixture",
+    (async (input) => {
+      const url = new URL(String(input));
+      const start = Number(url.searchParams.get("StartIndex"));
+      return Response.json({
+        Items:
+          start === 0
+            ? Array.from({ length: 200 }, (_, i) => ({
+                Id: `show-${i}`,
+                Name: `Show ${i}`,
+              }))
+            : [{ Id: "f1", Name: "Formula 1" }],
+        TotalRecordCount: 201,
+      });
+    }) as typeof fetch,
+  );
+  try {
+    const shows = await emby.shows("tv");
+    assert.equal(shows.length, 201);
+    assert.deepEqual(shows.at(-1), {
+      id: "f1",
+      name: "Formula 1",
+      path: undefined,
+    });
+    await f.store.set("settings", { embyLibraryId: "legacy-f1" });
+    assert.equal((await f.store.settings()).embyLibraryId, "legacy-f1");
+    assert.equal((await f.store.settings()).embySeriesId, "");
   } finally {
     f.close();
   }
