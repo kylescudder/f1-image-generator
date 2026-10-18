@@ -10,6 +10,7 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('deployer', Path(__file__).with_name('herman-deploy.py'))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+MIGRATE = module.migrate  # setUp replaces module.migrate with a mock
 D = 'sha256:' + 'a' * 64
 R = 'b' * 40
 
@@ -168,6 +169,27 @@ class Deploy(unittest.TestCase):
         with patch.object(module,'inspect_current',return_value=current),patch.object(module,'compose',self.fake_compose):
             with self.assertRaises(module.Error):module.deploy(D,R)
         self.assertFalse((module.STATE/'public/deployment.json').exists())
+
+    def test_migration_container_bypasses_the_app_entrypoint(self):
+        # The image entrypoint writes to /app/data and ignores its arguments (it would start the server),
+        # so the read-only one-shot migration container must run bun directly.
+        platform=self.app/'platform'
+        secret=platform/'projects/paddock/owner-password'
+        secret.parent.mkdir(parents=True);secret.write_text('x');secret.chmod(0o600)
+        with patch.object(module,'APP',platform/'apps/paddock'),patch.object(module,'run') as run:
+            MIGRATE(module.IMAGE+'@'+D)
+        command=run.call_args.args[0]
+        self.assertEqual(command[command.index('--entrypoint')+1],'bun')
+        self.assertEqual(command[-2:],[module.IMAGE+'@'+D,'/app/server/migrate.ts'])
+
+    def test_first_deploy_lists_containers_with_the_candidate_image(self):
+        # compose.yaml requires PADDOCK_IMAGE, which is unset on a first deploy.
+        calls=[]
+        def compose(*args,**kwargs):
+            calls.append((args,kwargs.get('image')))
+            raise module.Error('stop after the first call')
+        with patch.object(module,'compose',compose),self.assertRaises(module.Error):module.deploy(D,R)
+        self.assertEqual(calls[0],(('ps','-a','-q','web'),module.IMAGE+'@'+D))
 
 
 if __name__=='__main__':unittest.main()
