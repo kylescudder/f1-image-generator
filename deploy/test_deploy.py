@@ -10,6 +10,7 @@ from unittest.mock import patch
 spec = importlib.util.spec_from_file_location('deployer', Path(__file__).with_name('herman-deploy.py'))
 module = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(module)
+MIGRATE = module.migrate  # setUp replaces module.migrate with a mock
 D = 'sha256:' + 'a' * 64
 R = 'b' * 40
 
@@ -176,7 +177,7 @@ class Deploy(unittest.TestCase):
         secret=platform/'projects/paddock/owner-password'
         secret.parent.mkdir(parents=True);secret.write_text('x');secret.chmod(0o600)
         with patch.object(module,'APP',platform/'apps/paddock'),patch.object(module,'run') as run:
-            module.migrate(module.IMAGE+'@'+D)
+            MIGRATE(module.IMAGE+'@'+D)
         command=run.call_args.args[0]
         self.assertEqual(command[command.index('--entrypoint')+1],'bun')
         self.assertEqual(command[-2:],[module.IMAGE+'@'+D,'/app/server/migrate.ts'])
