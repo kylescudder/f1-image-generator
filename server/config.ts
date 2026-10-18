@@ -7,11 +7,10 @@ export const config = {
   root: process.cwd(),
   clerkPublishableKey: process.env.CLERK_PUBLISHABLE_KEY || "",
   clerkSecretKey: process.env.CLERK_SECRET_KEY || "",
-  ownerId: process.env.CLERK_OWNER_USER_ID || "",
   openrouterKey: process.env.OPENROUTER_API_KEY || "",
   embyUrl: (process.env.EMBY_URL || "").replace(/\/$/, ""),
   embyKey: process.env.EMBY_API_KEY || "",
 };
 export const authConfigured = Boolean(
-  config.clerkPublishableKey && config.clerkSecretKey && config.ownerId,
+  config.clerkPublishableKey && config.clerkSecretKey,
 );

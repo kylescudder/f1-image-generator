@@ -429,7 +429,7 @@ test("Emby uploads a base64 PNG once per changed version, and keeps errors retry
     f.close();
   }
 });
-test("owner routes deny anonymous/other users and cross-origin mutations before any inference runs", async () => {
+test("admin routes deny anonymous users and cross-origin mutations before any inference runs", async () => {
   const f = await fixture();
   let inferenceCalls = 0;
   useServices({
@@ -450,7 +450,6 @@ test("owner routes deny anonymous/other users and cross-origin mutations before 
     config: {
       clerkPublishableKey: "pk_test_fixture",
       clerkSecretKey: "sk_test_fixture",
-      ownerId: "user_owner",
       appUrl: "https://paddock.thescudders.org",
     },
     identity: (request) => {
@@ -475,13 +474,12 @@ test("owner routes deny anonymous/other users and cross-origin mutations before 
         ),
       });
     assert.equal((await send("")).status, 401);
-    assert.equal((await send("user_other")).status, 403);
     assert.equal(
-      (await send("user_owner", "https://attacker.invalid")).status,
+      (await send("user_signed_in", "https://attacker.invalid")).status,
       403,
     );
     assert.equal(inferenceCalls, 0);
-    assert.equal((await send("user_owner")).status, 202);
+    assert.equal((await send("user_signed_in")).status, 202);
     assert.equal(inferenceCalls, 1);
   } finally {
     guardOverrides.current = undefined;
@@ -489,14 +487,13 @@ test("owner routes deny anonymous/other users and cross-origin mutations before 
     f.close();
   }
 });
-test("without a configured owner all admin APIs fail closed", async () => {
+test("without Clerk keys all admin APIs fail closed", async () => {
   const f = await fixture();
   useServices({ store: f.store, config } as unknown as Services);
   guardOverrides.current = {
     config: {
       clerkPublishableKey: "",
       clerkSecretKey: "",
-      ownerId: "",
       appUrl: "https://paddock.thescudders.org",
     },
   };

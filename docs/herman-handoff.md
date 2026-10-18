@@ -1,6 +1,6 @@
 # Herman session handoff
 
-The user authorized the app, single-owner Clerk authentication, OpenRouter models discovered dynamically in Settings, automatic calendar/Emby updates, and CI/CD/Cloudflare using Herman's established pattern. Public hostname: **paddock.thescudders.org**. They explicitly deferred Clerk owner ID and integration-key setup until a Herman session has the needed permissions; do not ask them to paste keys in chat.
+The user authorized the app, invite-only Clerk authentication (any signed-in user is an admin), OpenRouter models discovered dynamically in Settings, automatic calendar/Emby updates, and CI/CD/Cloudflare using Herman's established pattern. Public hostname: **paddock.thescudders.org**. They explicitly deferred Clerk and integration-key setup until a Herman session has the needed permissions; do not ask them to paste keys in chat.
 
 ## Implemented
 
@@ -16,9 +16,9 @@ Forge reaches `herman.local`, but its SSH identity was rejected. No Cloudflare D
 1. Read `/Users/kyle/platform/runbook.md`, applicable host instructions, and current Office Tracker conventions. Use existing Colima, `platform-web`, Tunnel and Caddy; no self-hosted Actions runner or exposed Docker socket.
 2. Open the reviewed checkout at `/Users/kyle/platform/apps/paddock`. Run `python3 -B deploy/bootstrap-herman.py`. It preserves private files and prepares the app-specific receiver, signing key and LaunchAgent.
 3. With Herman's Cloudflare permissions, create a dedicated Service Auth app/policy/token for `deploy-paddock.thescudders.org`, allowing only `github-paddock-deploy`. Put client credentials in GitHub production secrets without displaying them. Use `scripts/hostname.py` for the exact hook path and public app route, as documented. Preserve other services/DNS.
-4. Copy approved Clerk/OpenRouter/Emby values from Herman's secret store to private runtime `.env`. Configure the Clerk production domain and owner ID when permissions are ready. Missing values may remain blank for a public-gallery-only first deployment.
+4. Copy approved Clerk/OpenRouter/Emby values from Herman's secret store to private runtime `.env`. Configure the Clerk production domain, keeping sign-ups invite-only, when permissions are ready. Missing values may remain blank for a public-gallery-only first deployment.
 5. Set `DEPLOY_ENABLED=true` only after Access, hook and three production secrets exist. Run Release on main. Herman verifies provenance before starting the image; the workflow waits for public `X-Paddock-Revision` to match the commit.
-6. Verify the live gallery, Clerk owner access and rejection of another account. Refresh/select an image model and allowance, generate Madrid/Sepang, then connect Emby and review mappings across both seasons. Paid inference, real Clerk sign-in, and real Emby writes were not tested without Herman credentials.
+6. Verify the live gallery, Clerk sign-in and that anonymous requests to the admin APIs are refused. Refresh/select an image model and allowance, generate Madrid/Sepang, then connect Emby and review mappings across both seasons. Paid inference, real Clerk sign-in, and real Emby writes were not tested without Herman credentials.
 
 The release default `DEPLOY_ENABLED=false` allows image publishing before provisioning. Intended `PADDOCK_BASE_URL`: `https://paddock.thescudders.org`. The production environment permits main only. Registry-only attestation uses the official GitHub toolkit's `skipWrite` option because GitHub's repository attestation API excludes user-owned private repositories; Herman verifies the signed bundle directly from GHCR. Secret values never belong in source, images, workflow logs or chat.
 
