@@ -80,3 +80,51 @@ test("video resolution in a filename does not replace the season folder's year",
     ).candidates,
   ).toEqual([{ eventId: "2026-singapore", session: "race", score: 100 }]);
 });
+
+test("unrelated ancestor folders do not exclude a competitive episode", () => {
+  for (const ancestor of [
+    "review",
+    "preview",
+    "highlights",
+    "practice",
+    "notebook",
+    "fp1",
+  ]) {
+    expect(
+      matchItem(
+        {
+          Id: "ancestor-race",
+          Name: "Episode 1",
+          Path: `/srv/${ancestor}/Formula 1/2026/Singapore/Race.mkv`,
+        },
+        events,
+      ).candidates,
+    ).toEqual([{ eventId: "2026-singapore", session: "race", score: 100 }]);
+  }
+});
+
+test("episode names, filenames and adjacent session folders still exclude noncompetitive footage", () => {
+  for (const item of [
+    {
+      Name: "Singapore Race Highlights",
+      Path: "/tv/Formula 1/2026/Singapore/Race.mkv",
+    },
+    {
+      Name: "Episode 1",
+      Path: "/tv/Formula 1/2026/Singapore/Highlights/video.mkv",
+    },
+    {
+      Name: "Episode 1",
+      Path: "/tv/Formula 1/2026/Singapore/Highlights/Race/video.mkv",
+    },
+    {
+      Name: "Episode 1",
+      Path: "/tv/Formula 1/2026/Singapore/Race/Highlights/video.mkv",
+    },
+    { Name: "Episode 1", Path: "/tv/Formula 1/2026/Singapore/FP.1/video.mkv" },
+  ]) {
+    expect(matchItem({ Id: "excluded", ...item }, events).candidates).toEqual(
+      [],
+    );
+  }
+});

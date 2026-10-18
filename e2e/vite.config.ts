@@ -86,7 +86,7 @@ const emby = new Emby(
       {
         Id: "sprint-quali",
         Name: "Episode 1",
-        Path: "/tv/Formula 1/Season 2026/17 Singapore/Sprint Qualifying/video.mkv",
+        Path: "/srv/review/Formula 1/Season 2026/17 Singapore/Sprint Qualifying/video.mkv",
       },
       {
         Id: "race",
