@@ -1047,7 +1047,7 @@ img {
   margin-bottom: 28px;
 }
 .setup-page h1,
-.sign-in-page h1 {
+.sign-in-page > h1 {
   font-family: "Space Grotesk", sans-serif;
   letter-spacing: -1.8px;
   font-size: 43px;
@@ -1085,6 +1085,11 @@ img {
 }
 .sign-in-page .cl-rootBox {
   margin-top: 30px;
+  width: 100%;
+}
+.sign-in-page .cl-cardBox {
+  width: 100%;
+  max-width: 100%;
 }
 .admin-main {
   max-width: 1220px;
