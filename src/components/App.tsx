@@ -34,6 +34,7 @@ import {
 import { libraryQuery } from "../lib/library";
 import { errorMessage, post, request } from "../lib/api";
 import { Studio } from "./Studio";
+import { OpenRouterSpend } from "./OpenRouterSpend";
 import {
   sessions,
   type AdminStatus,
@@ -1253,6 +1254,7 @@ function Admin({
             </button>
           </section>
           <div className="settings-stack">
+            <OpenRouterSpend configured={status.configured.openrouter} />
             <section className="settings-card">
               <div className="card-heading">
                 <div className="card-icon">
