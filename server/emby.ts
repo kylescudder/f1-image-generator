@@ -155,7 +155,7 @@ export class Emby {
       .filter((item) => item.id);
   }
   async candidates(): Promise<EmbyCandidate[]> {
-    const library = this.store.settings().embyLibraryId;
+    const library = (await this.store.settings()).embyLibraryId;
     if (!library)
       throw new Error("Choose your F1 library before inspecting episodes.");
     const items: EmbyItem[] = [];
@@ -181,22 +181,24 @@ export class Emby {
       )
         break;
     }
-    return items.map((item) => matchItem(item, this.store.events()));
+    const events = await this.store.events();
+    return items.map((item) => matchItem(item, events));
   }
   async sync(): Promise<string> {
     if (!this.configured) return "Emby is not connected yet.";
     let updated = 0;
     let failed = 0;
-    for (const mapping of this.store.mappings()) {
-      const event = this.store.event(mapping.eventId);
+    const index = await this.store.backgrounds();
+    for (const mapping of await this.store.mappings()) {
+      const event = await this.store.event(mapping.eventId);
       if (
         !event ||
         event.cancelled ||
         !sessionKeys(event.sprint).includes(mapping.session) ||
-        !this.artwork.background(event)
+        !(await this.artwork.background(event, index))
       )
         continue;
-      const version = this.artwork.version(event, mapping.session);
+      const version = await this.artwork.version(event, mapping.session, index);
       if (mapping.lastImageVersion === version) continue;
       try {
         const bytes = await this.artwork.png(event, mapping.session, 3840);
@@ -208,7 +210,7 @@ export class Emby {
             body: bytes.toString("base64"),
           },
         );
-        this.store.saveMapping({
+        await this.store.saveMapping({
           ...mapping,
           lastImageVersion: version,
           lastSyncedAt: new Date().toISOString(),
@@ -216,7 +218,7 @@ export class Emby {
         });
         updated++;
       } catch (error) {
-        this.store.saveMapping({
+        await this.store.saveMapping({
           ...mapping,
           error:
             error instanceof Error

@@ -1,7 +1,5 @@
-import { DatabaseSync } from "node:sqlite";
-import { mkdirSync } from "node:fs";
-import path from "node:path";
 import { randomUUID } from "node:crypto";
+import type { SQL } from "bun";
 import type {
   AppSettings,
   EmbyMapping,
@@ -9,39 +7,31 @@ import type {
   RaceEvent,
 } from "../shared/types.ts";
 
+type Background = { file: string; version: string };
+const iso = (value: Date | string | null) =>
+  value === null ? null : new Date(value).toISOString();
+// Bun returns JSONB as text; both text and parsed values are accepted.
+const parse = <T>(value: unknown) =>
+  (typeof value === "string" ? JSON.parse(value) : value) as T;
+
 export class Store {
-  db: DatabaseSync;
-  constructor(directory: string) {
-    mkdirSync(directory, { recursive: true });
-    this.db = new DatabaseSync(path.join(directory, "paddock.sqlite"));
-    this.db
-      .exec(`PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON; PRAGMA busy_timeout=5000;
-      CREATE TABLE IF NOT EXISTS state (key TEXT PRIMARY KEY, value TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS events (id TEXT PRIMARY KEY, season INTEGER NOT NULL, payload TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS backgrounds (venue TEXT PRIMARY KEY, file TEXT NOT NULL, version TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS jobs (id TEXT PRIMARY KEY, kind TEXT NOT NULL, eventId TEXT, status TEXT NOT NULL, message TEXT NOT NULL, createdAt TEXT NOT NULL, finishedAt TEXT);
-      CREATE TABLE IF NOT EXISTS attempts (id TEXT PRIMARY KEY, month TEXT NOT NULL, model TEXT NOT NULL, createdAt TEXT NOT NULL);
-      CREATE TABLE IF NOT EXISTS mappings (eventId TEXT NOT NULL, session TEXT NOT NULL, itemId TEXT NOT NULL UNIQUE, itemName TEXT NOT NULL, lastImageVersion TEXT, lastSyncedAt TEXT, error TEXT, PRIMARY KEY(eventId,session));`);
-    this.db
-      .prepare(
-        "UPDATE jobs SET status='failed', message='Interrupted by a restart. You can retry.', finishedAt=? WHERE status IN ('running','queued')",
-      )
-      .run(new Date().toISOString());
+  constructor(public sql: SQL) {}
+  // Creating a Store marks work interrupted by a previous process as retryable.
+  async open() {
+    await this.sql`UPDATE jobs SET status='failed',
+      message='Interrupted by a restart. You can retry.', finished_at=${new Date().toISOString()}
+      WHERE status IN ('running','queued')`;
+    return this;
   }
-  get<T>(key: string, fallback: T): T {
-    const row = this.db
-      .prepare("SELECT value FROM state WHERE key=?")
-      .get(key) as { value: string } | undefined;
-    return row ? (JSON.parse(row.value) as T) : fallback;
+  async get<T>(key: string, fallback: T): Promise<T> {
+    const [row] = await this.sql`SELECT value FROM state WHERE key=${key}`;
+    return row ? parse<T>(row.value) : fallback;
   }
-  set(key: string, value: unknown) {
-    this.db
-      .prepare(
-        "INSERT INTO state(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value",
-      )
-      .run(key, JSON.stringify(value));
+  async set(key: string, value: unknown) {
+    await this.sql`INSERT INTO state (key, value) VALUES (${key}, ${JSON.stringify(value)}::jsonb)
+      ON CONFLICT (key) DO UPDATE SET value=excluded.value`;
   }
-  settings(): AppSettings {
+  async settings(): Promise<AppSettings> {
     return this.get("settings", {
       modelId: "",
       monthlyGenerationLimit: 5,
@@ -51,66 +41,71 @@ export class Store {
       embyLibraryId: "",
     });
   }
-  events(season?: number): RaceEvent[] {
+  async events(season?: number): Promise<RaceEvent[]> {
     const rows =
       season === undefined
-        ? this.db.prepare("SELECT payload FROM events").all()
-        : this.db
-            .prepare("SELECT payload FROM events WHERE season=?")
-            .all(season);
+        ? await this.sql`SELECT payload FROM events`
+        : await this.sql`SELECT payload FROM events WHERE season=${season}`;
     return rows
-      .map((row) => JSON.parse(row.payload as string) as RaceEvent)
-      .sort((a, b) => a.season - b.season || a.round - b.round);
+      .map((row: { payload: unknown }) => parse<RaceEvent>(row.payload))
+      .sort((a: RaceEvent, b: RaceEvent) => a.season - b.season || a.round - b.round);
   }
-  event(id: string): RaceEvent | undefined {
-    const row = this.db
-      .prepare("SELECT payload FROM events WHERE id=?")
-      .get(id);
-    return row ? JSON.parse(row.payload as string) : undefined;
+  async event(id: string): Promise<RaceEvent | undefined> {
+    const [row] = await this.sql`SELECT payload FROM events WHERE id=${id}`;
+    return row ? parse<RaceEvent>(row.payload) : undefined;
   }
-  saveEvent(event: RaceEvent) {
-    this.db
-      .prepare(
-        "INSERT INTO events(id,season,payload) VALUES(?,?,?) ON CONFLICT(id) DO UPDATE SET payload=excluded.payload,season=excluded.season",
-      )
-      .run(event.id, event.season, JSON.stringify(event));
+  async saveEvent(event: RaceEvent) {
+    await this.sql`INSERT INTO events (id, season, payload)
+      VALUES (${event.id}, ${event.season}, ${JSON.stringify(event)}::jsonb)
+      ON CONFLICT (id) DO UPDATE SET payload=excluded.payload, season=excluded.season`;
   }
-  background(venue: string): { file: string; version: string } | undefined {
-    return this.db
-      .prepare("SELECT file,version FROM backgrounds WHERE venue=?")
-      .get(venue) as { file: string; version: string } | undefined;
+  // Applies a whole season's changes atomically so a failure never leaves a half-updated calendar.
+  async transaction<T>(work: (tx: Store) => Promise<T>): Promise<T> {
+    return this.sql.begin((tx) => work(new Store(tx as unknown as SQL)));
   }
-  latestBackground(
+  async backgrounds(): Promise<Map<string, Background>> {
+    const rows = await this.sql`SELECT venue, file, version FROM backgrounds`;
+    return new Map(
+      rows.map((row: { venue: string } & Background) => [row.venue, row]),
+    );
+  }
+  async background(venue: string): Promise<Background | undefined> {
+    return (await this.backgrounds()).get(venue);
+  }
+  // Newest generated background at or before this season; later seasons never alter history.
+  async latestBackground(
     venue: string,
     season: number,
-  ): { file: string; version: string } | undefined {
-    const rows = this.db
-      .prepare("SELECT venue,file,version FROM backgrounds WHERE venue LIKE ?")
-      .all(`${venue}:%`) as unknown as {
-      venue: string;
-      file: string;
-      version: string;
-    }[];
-    return rows
-      .filter((row) => Number(row.venue.split(":").at(-1)) <= season)
-      .sort(
-        (a, b) =>
-          Number(b.venue.split(":").at(-1)) - Number(a.venue.split(":").at(-1)),
-      )[0];
+    index?: Map<string, Background>,
+  ): Promise<Background | undefined> {
+    const all = index ?? (await this.backgrounds());
+    return [...all.entries()]
+      .filter(([key]) => key.startsWith(`${venue}:`))
+      .map(([key, value]) => ({ year: Number(key.split(":").at(-1)), value }))
+      .filter(({ year }) => year <= season)
+      .sort((a, b) => b.year - a.year)[0]?.value;
   }
-  saveBackground(venue: string, file: string, version: string) {
-    this.db
-      .prepare(
-        "INSERT INTO backgrounds VALUES(?,?,?) ON CONFLICT(venue) DO UPDATE SET file=excluded.file,version=excluded.version",
-      )
-      .run(venue, file, version);
+  async saveBackground(venue: string, file: string, version: string) {
+    await this.sql`INSERT INTO backgrounds (venue, file, version) VALUES (${venue}, ${file}, ${version})
+      ON CONFLICT (venue) DO UPDATE SET file=excluded.file, version=excluded.version`;
   }
-  jobs(): Job[] {
-    return this.db
-      .prepare("SELECT * FROM jobs ORDER BY createdAt DESC LIMIT 30")
-      .all() as unknown as Job[];
+  async jobs(): Promise<Job[]> {
+    const rows = await this.sql`SELECT * FROM jobs ORDER BY created_at DESC LIMIT 30`;
+    return rows.map((row: Record<string, unknown>) => ({
+      id: row.id as string,
+      kind: row.kind as Job["kind"],
+      eventId: row.event_id as string | null,
+      status: row.status as Job["status"],
+      message: row.message as string,
+      createdAt: iso(row.created_at as Date)!,
+      finishedAt: iso(row.finished_at as Date | null),
+    }));
   }
-  createJob(kind: Job["kind"], eventId: string | null, message: string): Job {
+  async createJob(
+    kind: Job["kind"],
+    eventId: string | null,
+    message: string,
+  ): Promise<Job> {
     const job: Job = {
       id: randomUUID(),
       kind,
@@ -120,77 +115,60 @@ export class Store {
       createdAt: new Date().toISOString(),
       finishedAt: null,
     };
-    this.db
-      .prepare("INSERT INTO jobs VALUES(?,?,?,?,?,?,?)")
-      .run(
-        job.id,
-        job.kind,
-        job.eventId,
-        job.status,
-        job.message,
-        job.createdAt,
-        null,
-      );
+    await this.sql`INSERT INTO jobs (id, kind, event_id, status, message, created_at)
+      VALUES (${job.id}, ${job.kind}, ${job.eventId}, ${job.status}, ${job.message}, ${job.createdAt})`;
     return job;
   }
-  updateJob(id: string, status: Job["status"], message: string) {
-    this.db
-      .prepare("UPDATE jobs SET status=?,message=?,finishedAt=? WHERE id=?")
-      .run(
-        status,
-        message,
-        status === "running" || status === "queued"
-          ? null
-          : new Date().toISOString(),
-        id,
-      );
+  async updateJob(id: string, status: Job["status"], message: string) {
+    const finished =
+      status === "running" || status === "queued"
+        ? null
+        : new Date().toISOString();
+    await this.sql`UPDATE jobs SET status=${status}, message=${message}, finished_at=${finished}
+      WHERE id=${id}`;
   }
-  attempts(month = new Date().toISOString().slice(0, 7)): number {
-    return Number(
-      this.db
-        .prepare("SELECT count(*) AS count FROM attempts WHERE month=?")
-        .get(month)?.count || 0,
-    );
+  async attempts(month = new Date().toISOString().slice(0, 7)): Promise<number> {
+    const [row] = await this.sql`SELECT count(*)::int AS count FROM attempts WHERE month=${month}`;
+    return Number(row?.count || 0);
   }
-  reserveAttempt(model: string, limit: number, now = new Date()): boolean {
-    this.db.exec("BEGIN IMMEDIATE");
-    try {
-      const month = now.toISOString().slice(0, 7);
-      if (this.attempts(month) >= limit) {
-        this.db.exec("ROLLBACK");
-        return false;
-      }
-      this.db
-        .prepare("INSERT INTO attempts VALUES(?,?,?,?)")
-        .run(randomUUID(), month, model, now.toISOString());
-      this.db.exec("COMMIT");
+  async reserveAttempt(model: string, limit: number, now = new Date()): Promise<boolean> {
+    const month = now.toISOString().slice(0, 7);
+    return this.sql.begin(async (tx) => {
+      // Serialises concurrent reservations so the monthly allowance can never be exceeded.
+      await tx`SELECT pg_advisory_xact_lock(hashtext('paddock-attempts'))`;
+      const [row] = await tx`SELECT count(*)::int AS count FROM attempts WHERE month=${month}`;
+      if (Number(row.count) >= limit) return false;
+      await tx`INSERT INTO attempts (id, month, model, created_at)
+        VALUES (${randomUUID()}, ${month}, ${model}, ${now.toISOString()})`;
       return true;
-    } catch (error) {
-      this.db.exec("ROLLBACK");
-      throw error;
-    }
+    });
   }
-  mappings(): EmbyMapping[] {
-    return this.db
-      .prepare("SELECT * FROM mappings ORDER BY eventId,session")
-      .all() as unknown as EmbyMapping[];
+  async mappings(): Promise<EmbyMapping[]> {
+    const rows = await this.sql`SELECT * FROM mappings ORDER BY event_id, session`;
+    return rows.map((row: Record<string, unknown>) => ({
+      eventId: row.event_id as string,
+      session: row.session as EmbyMapping["session"],
+      itemId: row.item_id as string,
+      itemName: row.item_name as string,
+      lastImageVersion: row.last_image_version as string | null,
+      lastSyncedAt: iso(row.last_synced_at as Date | null),
+      error: row.error as string | null,
+    }));
   }
-  saveMapping(mapping: EmbyMapping) {
-    this.db
-      .prepare(
-        `INSERT INTO mappings VALUES(?,?,?,?,?,?,?) ON CONFLICT(eventId,session) DO UPDATE SET itemId=excluded.itemId,itemName=excluded.itemName,lastImageVersion=excluded.lastImageVersion,lastSyncedAt=excluded.lastSyncedAt,error=excluded.error`,
-      )
-      .run(
-        mapping.eventId,
-        mapping.session,
-        mapping.itemId,
-        mapping.itemName,
-        mapping.lastImageVersion,
-        mapping.lastSyncedAt,
-        mapping.error,
-      );
+  async saveMapping(mapping: EmbyMapping, sql: SQL = this.sql) {
+    await sql`INSERT INTO mappings (event_id, session, item_id, item_name, last_image_version, last_synced_at, error)
+      VALUES (${mapping.eventId}, ${mapping.session}, ${mapping.itemId}, ${mapping.itemName},
+        ${mapping.lastImageVersion}, ${mapping.lastSyncedAt}, ${mapping.error})
+      ON CONFLICT (event_id, session) DO UPDATE SET item_id=excluded.item_id, item_name=excluded.item_name,
+        last_image_version=excluded.last_image_version, last_synced_at=excluded.last_synced_at, error=excluded.error`;
   }
-  close() {
-    this.db.close();
+  async deleteMapping(eventId: string, session: string) {
+    await this.sql`DELETE FROM mappings WHERE event_id=${eventId} AND session=${session}`;
+  }
+  // Remaps are saved together: either every row changes or none do.
+  async replaceMappings(values: EmbyMapping[]) {
+    await this.sql.begin(async (tx) => {
+      for (const item of values) await this.saveMapping(item, tx as unknown as SQL);
+    });
   }
 }

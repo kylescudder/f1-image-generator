@@ -25,7 +25,8 @@ class Deploy(unittest.TestCase):
         for f in ('.env',):
             p=self.app/f;p.write_text('PADDOCK_IMAGE=previous\n');p.chmod(0o600)
         self.calls=[]
-        self.backup = patch.object(module, 'backup_data').start()
+        self.backup = patch.object(module, 'backup_database').start()
+        self.migrate = patch.object(module, 'migrate').start()
 
     def tearDown(self):
         for p in reversed(self.patches):p.stop()
@@ -89,7 +90,7 @@ class Deploy(unittest.TestCase):
 
     def fake_compose(self,*args,**kwargs):
         if args[0]=='ps':return b'container\n'
-        if args[0]=='exec' and kwargs.get('output'):kwargs['output'].write(b'SQLite format 3\0'+b'0'*1024)
+        if args[0]=='exec' and kwargs.get('output'):kwargs['output'].write(b'PGDMP'+b'0'*1024)
         return b''
 
     def test_failed_verification_never_migrates_or_starts(self):
@@ -100,6 +101,7 @@ class Deploy(unittest.TestCase):
             with self.assertRaises(module.Error):module.deploy(D,R)
             start.assert_not_called()
         self.backup.assert_not_called()
+        self.migrate.assert_not_called()
 
     def test_revision_mismatch_never_migrates_or_starts(self):
         with patch.object(module,'run',self.fake_run),patch.object(module,'compose',self.fake_compose),patch.object(module,'start') as start:
@@ -114,11 +116,21 @@ class Deploy(unittest.TestCase):
         self.assertFalse((module.STATE/'history.log').exists())
         self.assertIn('PADDOCK_IMAGE=previous',(self.app/'.env').read_text())
 
+    def test_failed_migration_keeps_the_previous_image_and_does_not_start(self):
+        self.migrate.side_effect = module.Error('migration rejected')
+        with patch.object(module,'run',self.fake_run),patch.object(module,'compose',self.fake_compose),patch.object(module,'start') as start:
+            with self.assertRaises(module.Error):module.deploy(D,R)
+            start.assert_not_called()
+        self.backup.assert_called_once()
+        self.assertFalse((module.STATE/'history.log').exists())
+        self.assertIn('PADDOCK_IMAGE=previous',(self.app/'.env').read_text())
+
     def test_failed_backup_keeps_the_previous_image_and_does_not_start(self):
         self.backup.side_effect = module.Error('backup rejected')
         with patch.object(module,'run',self.fake_run),patch.object(module,'compose',self.fake_compose),patch.object(module,'start') as start:
             with self.assertRaises(module.Error):module.deploy(D,R)
             start.assert_not_called()
+        self.migrate.assert_not_called()
         self.assertFalse((module.STATE/'history.log').exists())
         self.assertIn('PADDOCK_IMAGE=previous',(self.app/'.env').read_text())
 

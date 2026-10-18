@@ -1,14 +1,32 @@
 name: paddock-local
 services:
+  db:
+    image: postgres:18.6-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: paddock
+      POSTGRES_USER: paddock
+      # Disposable local database, reachable only from this Compose project.
+      POSTGRES_HOST_AUTH_METHOD: trust
+    volumes: ["paddock-db:/var/lib/postgresql"]
+    healthcheck:
+      test: [CMD, pg_isready, -U, paddock, -d, paddock]
+      interval: 5s
+      timeout: 5s
+      retries: 10
   web:
     build: .
     image: paddock:local
     init: true
     restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
     ports: ["127.0.0.1:3000:3000"]
     environment:
       APP_URL: http://localhost:3000
       DATA_DIR: /app/data
+      DATABASE_URL: postgres://paddock@db:5432/paddock
+      PADDOCK_MIGRATE: "1"
       CLERK_PUBLISHABLE_KEY: ${CLERK_PUBLISHABLE_KEY:-}
       CLERK_SECRET_KEY: ${CLERK_SECRET_KEY:-}
       CLERK_OWNER_USER_ID: ${CLERK_OWNER_USER_ID:-}
@@ -18,3 +36,4 @@ services:
     volumes: ["paddock-data:/app/data"]
 volumes:
   paddock-data:
+  paddock-db:

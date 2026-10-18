@@ -23,16 +23,22 @@ export class Jobs {
     private inferenceReady: boolean,
     private redact: (error: unknown) => string,
   ) {}
-  private enqueue(
+  private async enqueue(
     kind: Job["kind"],
     eventId: string | null,
     key: string,
     run: () => Promise<string>,
-  ): Job {
+  ): Promise<Job> {
     if (this.pending.has(key))
       throw new Error("This task is already queued or running.");
-    const job = this.store.createJob(kind, eventId, "Waiting to start");
     this.pending.add(key);
+    let job: Job;
+    try {
+      job = await this.store.createJob(kind, eventId, "Waiting to start");
+    } catch (error) {
+      this.pending.delete(key);
+      throw error;
+    }
     this.queue.push({
       job,
       run: async () => {
@@ -43,7 +49,7 @@ export class Jobs {
         }
       },
     });
-    setImmediate(() => void this.drain());
+    setImmediate(() => void this.drain().catch((error) => console.error(error)));
     return job;
   }
   private async drain() {
@@ -52,17 +58,17 @@ export class Jobs {
     try {
       while (this.queue.length) {
         const item = this.queue.shift()!;
-        this.store.updateJob(item.job.id, "running", "Working…");
+        await this.store.updateJob(item.job.id, "running", "Working…");
         try {
-          this.store.updateJob(item.job.id, "completed", await item.run());
+          await this.store.updateJob(item.job.id, "completed", await item.run());
         } catch (error) {
           const message = this.redact(error);
-          this.store.updateJob(item.job.id, "failed", message);
-          if (item.job.kind === "sync") this.store.set("syncError", message);
+          await this.store.updateJob(item.job.id, "failed", message);
+          if (item.job.kind === "sync") await this.store.set("syncError", message);
           if (item.job.kind === "generate" && item.job.eventId) {
-            const event = this.store.event(item.job.eventId);
+            const event = await this.store.event(item.job.eventId);
             if (event)
-              this.store.set(
+              await this.store.set(
                 `generationFailure:${event.venueKey}`,
                 new Date().toISOString().slice(0, 7),
               );
@@ -77,15 +83,15 @@ export class Jobs {
     return this.enqueue("sync", null, "sync", async () => {
       const result = await syncCalendars(this.store);
       const embyResult = await this.emby.sync();
-      this.autoGenerate();
+      await this.autoGenerate();
       return `${result}. ${embyResult}`;
     });
   }
   syncEmby() {
     return this.enqueue("emby", null, "emby", () => this.emby.sync());
   }
-  generate(eventId: string) {
-    const event = this.store.event(eventId);
+  async generate(eventId: string) {
+    const event = await this.store.event(eventId);
     if (!event) throw new Error("Weekend not found.");
     if (event.cancelled)
       throw new Error("Generation is disabled for archived weekends.");
@@ -93,14 +99,14 @@ export class Jobs {
       throw new Error(
         "Configure Clerk owner access and OPENROUTER_API_KEY before generating.",
       );
-    if (!this.store.settings().modelId)
+    if (!(await this.store.settings()).modelId)
       throw new Error("Choose an image-generation model in Settings first.");
     return this.enqueue(
       "generate",
       eventId,
       `generate:${event.venueKey}`,
       async () => {
-        const settings = this.store.settings();
+        const settings = await this.store.settings();
         const catalog = await this.router.models();
         const model = catalog.models.find(
           (model) => model.id === settings.modelId,
@@ -122,7 +128,10 @@ export class Jobs {
         const prompt = `Create one Formula 1 Grand Prix thumbnail background, matching the supplied reference's richly textured retro travel-poster illustration style. Actual venue: ${event.circuit}, ${event.locality}, ${event.country}. Depict the actual circuit and appropriate local landmarks, with a red open-wheel racing car large in the lower foreground, dynamic track perspective, rich atmospheric lighting and a limited cinematic palette. Use 16:9 landscape composition. Keep the upper third relatively calm and dark enough for a centered venue title and a smaller session label. Leave bottom-right space for a cream year/round caption. Background art only: no words, numbers, captions, logos, watermarks or lettering. The event is ${event.name}, but the depicted physical location MUST be ${event.locality}, ${event.country}; do not reuse scenery from an event's former location.`;
         // Reserve durably before the request; failures/retries also consume an attempt.
         if (
-          !this.store.reserveAttempt(model.id, settings.monthlyGenerationLimit)
+          !(await this.store.reserveAttempt(
+            model.id,
+            settings.monthlyGenerationLimit,
+          ))
         )
           throw new Error(
             "Monthly background-generation limit reached. Change the allowance in Settings or wait until next month.",
@@ -149,12 +158,12 @@ export class Jobs {
         const file = path.join(directory, `${event.venueKey}-${version}.png`);
         await writeFile(`${file}.tmp`, image);
         await rename(`${file}.tmp`, file);
-        this.store.saveBackground(
+        await this.store.saveBackground(
           `${event.venueKey}:${event.season}`,
           file,
           version,
         );
-        this.store.set(`generation:${version}`, {
+        await this.store.set(`generation:${version}`, {
           model: model.id,
           prompt,
           createdAt: new Date().toISOString(),
@@ -165,8 +174,8 @@ export class Jobs {
       },
     );
   }
-  autoGenerate() {
-    const settings = this.store.settings();
+  async autoGenerate() {
+    const settings = await this.store.settings();
     if (
       !settings.autoGenerate ||
       !settings.modelId ||
@@ -176,48 +185,55 @@ export class Jobs {
       return;
     // Generate only for open seasons, once per physical venue. Failed tasks need an owner retry.
     const venues = new Set<string>();
-    for (const event of this.store.events().reverse()) {
+    const index = await this.store.backgrounds();
+    for (const event of (await this.store.events()).reverse()) {
       if (
         event.cancelled ||
-        this.store.get(`frozen:${event.season}`, false) ||
-        this.artwork.background(event) ||
+        (await this.store.get(`frozen:${event.season}`, false)) ||
+        (await this.artwork.background(event, index)) ||
         venues.has(event.venueKey)
       )
         continue;
       venues.add(event.venueKey);
       if (
-        this.store.get(`generationFailure:${event.venueKey}`, "") ===
+        (await this.store.get(`generationFailure:${event.venueKey}`, "")) ===
         new Date().toISOString().slice(0, 7)
       )
         continue;
-      if (this.store.attempts() >= settings.monthlyGenerationLimit) break;
+      if ((await this.store.attempts()) >= settings.monthlyGenerationLimit)
+        break;
       try {
-        this.generate(event.id);
+        await this.generate(event.id);
       } catch {
         /* already running or waiting for configuration */
       }
     }
   }
   start() {
-    const tick = () => {
-      const last = this.store.get<string | null>("lastSync", null);
-      const attempted = this.store.get<string | null>("lastSyncAttempt", null);
+    const tick = async () => {
+      const last = await this.store.get<string | null>("lastSync", null);
+      const attempted = await this.store.get<string | null>(
+        "lastSyncAttempt",
+        null,
+      );
       // Network failures retry hourly; successful checks follow the six-hour policy.
       if (
         (!last || Date.now() - Date.parse(last) >= syncInterval) &&
         (!attempted || Date.now() - Date.parse(attempted) >= 3600000)
       ) {
-        this.store.set("lastSyncAttempt", new Date().toISOString());
+        await this.store.set("lastSyncAttempt", new Date().toISOString());
         try {
-          this.sync();
+          await this.sync();
         } catch {
           /* a sync is already running */
         }
       }
     };
-    this.timer = setInterval(tick, 60000);
+    // A failed tick (e.g. the database restarting) is retried on the next minute.
+    const guarded = () => void tick().catch((error) => console.error(error));
+    this.timer = setInterval(guarded, 60000);
     this.timer.unref();
-    setImmediate(tick);
+    setImmediate(guarded);
   }
   stop() {
     if (this.timer) clearInterval(this.timer);

@@ -122,8 +122,8 @@ def pin(image):
 
 def start(image):
     compose('up', '-d', '--no-build', '--pull', 'never', '--wait', '--wait-timeout', '120', 'web', image=image)
-    compose('exec', '-T', 'web', 'node', '-e',
-            "fetch('http://127.0.0.1:3000/api/health').then(async r=>{if(!r.ok || !(await r.json()).ok) process.exit(1)}).catch(()=>process.exit(1))", image=image)
+    compose('exec', '-T', 'web', 'bun', '-e',
+            "const r=await fetch('http://127.0.0.1:3000/api/health'); if(!r.ok || !(await r.json()).ok) process.exit(1)", image=image)
 
 
 def inspect_current(container):
@@ -133,33 +133,36 @@ def inspect_current(container):
     return {'Config': {'Image': image, 'Labels': labels}, 'State': state}
 
 
-def backup_data():
-    # SQLite's online backup is made inside the running container, so its WAL
-    # is read consistently through the same filesystem implementation.
-    ids = compose('ps', '-q', 'web').decode().strip().splitlines()
-    if not ids:
-        log('first deployment; no running database to back up')
-        return
+def backup_database():
+    # Use the established database service locally. No administrator credential is
+    # mounted in this app or sent to GitHub/the receiver.
     stamp = datetime.now(timezone.utc).strftime('%Y%m%dT%H%M%S%fZ')
-    target = BACKUPS / f'pre-deploy-{stamp}.sqlite'
-    partial = target.with_suffix('.sqlite.partial')
-    script = (
-        "const {DatabaseSync}=require('node:sqlite');"
-        "const fs=require('node:fs');"
-        "const target='/tmp/paddock-deploy-backup.sqlite';"
-        "try{fs.unlinkSync(target)}catch{};"
-        "const db=new DatabaseSync('/app/data/paddock.sqlite');"
-        "db.exec(\"PRAGMA busy_timeout=10000; VACUUM INTO '/tmp/paddock-deploy-backup.sqlite'\");"
-        "db.close();process.stdout.write(fs.readFileSync(target));fs.unlinkSync(target);"
-    )
+    target = BACKUPS / f'pre-deploy-{stamp}.dump'
+    partial = target.with_suffix('.dump.partial')
     with partial.open('wb') as stream:
-        compose('exec', '-T', 'web', 'node', '-e', script, output=stream)
-    if partial.stat().st_size < 512 or partial.read_bytes()[:16] != b'SQLite format 3\0':
-        raise Error('Pre-deploy database backup was invalid.')
+        run(['docker', 'compose', '--project-directory', str(APP.parents[1]),
+             '-f', str(APP.parents[1] / 'compose.yaml'), 'exec', '-T', '--user',
+             'postgres', 'postgres', 'pg_dump', '-Fc', '-d', 'paddock'], output=stream)
+    if partial.stat().st_size == 0:
+        raise Error('Pre-deploy database backup was empty.')
     partial.replace(target)
-    for old in sorted(BACKUPS.glob('pre-deploy-*.sqlite'), reverse=True)[14:]:
+    for old in sorted(BACKUPS.glob('pre-deploy-*.dump'), reverse=True)[14:]:
         old.unlink()
     log('saved pre-deploy artwork library database backup')
+
+
+def migrate(candidate):
+    password = APP.parents[1] / 'projects/paddock/owner-password'
+    if password.is_symlink() or not password.is_file() or password.stat().st_mode & 0o077:
+        raise Error('Migration credential must be a protected regular file (0600).')
+    # The owner credential exists only in this one-shot container; the app runs as a restricted role.
+    run(['docker', 'run', '--rm', '--read-only', '--cap-drop', 'ALL', '--security-opt',
+         'no-new-privileges:true', '--user', '501:20', '--network', 'platform-db',
+         '--memory', '128m', '--cpus', '0.5', '--mount',
+         f'type=bind,src={password},dst=/run/secrets/database_password,readonly',
+         '--env', 'DATABASE_URL=postgres://paddock_owner@postgres:5432/paddock',
+         '--env', 'DATABASE_PASSWORD_FILE=/run/secrets/database_password',
+         candidate, 'bun', 'server/migrate.ts'], timeout=120)
 
 
 def deploy(digest, requested_revision=None):
@@ -192,8 +195,9 @@ def deploy(digest, requested_revision=None):
     if not REVISION.fullmatch(revision) or requested_revision and requested_revision != revision:
         raise Error('Verified image revision does not match the request.')
     log(f'provenance verified for {revision}')
-    backup_data()
-    log('database backed up; additive schema is initialized by the runtime')
+    backup_database()
+    migrate(candidate)
+    log('owner migrations applied; runtime remains restricted')
     try:
         start(candidate)
     except Error:
@@ -202,7 +206,7 @@ def deploy(digest, requested_revision=None):
             try:
                 start(running)
                 pin(running)
-                log('previous image restored; compatible SQLite data preserved')
+                log('previous image restored; migrations are not reverted')
             except Error:
                 raise Error('ROLLBACK FAILED; inspect the private deployment logs.') from None
         else:

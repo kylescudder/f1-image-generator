@@ -126,47 +126,42 @@ export function parseCalendar(raw: unknown, expectedYear: number): RaceEvent[] {
     };
   });
 }
-export function applyCalendar(
+export async function applyCalendar(
   store: Store,
   year: number,
   incoming: RaceEvent[],
 ) {
   const ids = new Set(incoming.map((event) => event.id));
-  store.db.exec("BEGIN IMMEDIATE");
-  try {
-    for (const old of store.events(year))
+  await store.transaction(async (tx) => {
+    for (const old of await tx.events(year))
       if (!ids.has(old.id) && !old.cancelled)
-        store.saveEvent({
+        await tx.saveEvent({
           ...old,
           cancelled: true,
           updatedAt: new Date().toISOString(),
         });
     for (const event of incoming) {
-      const previous = store.event(event.id);
+      const previous = await tx.event(event.id);
       const same =
         previous &&
         JSON.stringify({ ...previous, updatedAt: "" }) ===
           JSON.stringify({ ...event, updatedAt: "" });
-      store.saveEvent(same ? previous : event);
+      await tx.saveEvent(same ? previous : event);
     }
-    store.db.exec("COMMIT");
-  } catch (error) {
-    store.db.exec("ROLLBACK");
-    throw error;
-  }
+  });
 }
-export function seedCalendars(store: Store, root: string) {
+export async function seedCalendars(store: Store, root: string) {
   for (const year of [2025, 2026]) {
-    if (store.events(year).length) continue;
+    if ((await store.events(year)).length) continue;
     const file = path.join(root, "assets", "calendars", `${year}.json`);
     if (!existsSync(file))
-      throw new Error("Calendar seed missing. Run npm run setup.");
-    applyCalendar(
+      throw new Error("Calendar seed missing. Run bun run setup.");
+    await applyCalendar(
       store,
       year,
       parseCalendar(JSON.parse(readFileSync(file, "utf8")), year),
     );
-    store.set(`seeded:${year}`, new Date().toISOString());
+    await store.set(`seeded:${year}`, new Date().toISOString());
   }
 }
 export const syncInterval = 6 * 60 * 60 * 1000;
@@ -178,14 +173,14 @@ export async function syncCalendars(
   const current = now.getUTCFullYear();
   const years = [
     ...new Set([
-      ...store.events().map((event) => event.season),
+      ...(await store.events()).map((event) => event.season),
       current,
       current + 1,
     ]),
   ].sort();
   const results: string[] = [];
   for (const year of years) {
-    if (store.get(`frozen:${year}`, false)) continue;
+    if (await store.get(`frozen:${year}`, false)) continue;
     const response = await fetcher(
       `https://api.jolpi.ca/ergast/f1/${year}/?limit=100`,
       {
@@ -204,15 +199,15 @@ export async function syncCalendars(
     );
     if (year > current && total === 0) continue;
     const events = parseCalendar(raw, year);
-    applyCalendar(store, year, events);
+    await applyCalendar(store, year, events);
     const finalDate = Math.max(
       ...events.map((event) => Date.parse(event.date)),
     );
     if (now.getTime() > finalDate + 7 * 86400000)
-      store.set(`frozen:${year}`, true);
+      await store.set(`frozen:${year}`, true);
     results.push(`${year}: ${events.length} weekends`);
   }
-  store.set("lastSync", now.toISOString());
-  store.set("syncError", null);
+  await store.set("lastSync", now.toISOString());
+  await store.set("syncError", null);
   return results.join(" · ");
 }

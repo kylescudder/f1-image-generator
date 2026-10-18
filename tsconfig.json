@@ -10,15 +10,9 @@
     "esModuleInterop": true,
     "allowImportingTsExtensions": true,
     "resolveJsonModule": true,
+    "isolatedModules": true,
     "skipLibCheck": true,
-    "types": ["node", "vite/client"]
+    "types": ["bun", "vite/client"]
   },
-  "include": [
-    "src",
-    "server",
-    "shared",
-    "scripts/*.ts",
-    "tests",
-    "vite.config.ts"
-  ]
+  "include": ["src", "server", "shared", "scripts/*.ts", "tests", "vite.config.ts"]
 }

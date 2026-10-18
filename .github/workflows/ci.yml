@@ -8,6 +8,19 @@ jobs:
   check:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:18.6-alpine
+        env:
+          POSTGRES_DB: paddock_test
+          POSTGRES_USER: paddock_test_owner
+          # Disposable job-local database, isolated from production.
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U paddock_test_owner -d paddock_test"
+          --health-interval 5s --health-timeout 5s --health-retries 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -15,7 +28,10 @@ jobs:
       - name: Build checked source and prepare official fonts
         run: docker build --target build -t paddock:checks .
       - name: Verify rendering, calendar changes, model discovery, owner restrictions and Emby updates
-        run: docker run --rm paddock:checks npm test
+        run: |
+          docker run --rm --network host \
+            -e TEST_DATABASE_URL=postgres://paddock_test_owner@127.0.0.1:5432/paddock_test \
+            paddock:checks bun run test
       - name: Verify signed webhook and bounded queue
         run: docker run --rm -v "$PWD/deploy/receiver:/app:ro" -w /app node:24-bookworm-slim node --test server.test.mjs
       - name: Verify deployment provenance, backups and rollback gates

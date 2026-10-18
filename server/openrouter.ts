@@ -233,7 +233,7 @@ export class OpenRouter {
   async models(
     force = false,
   ): Promise<{ models: ImageModel[]; fetchedAt: string; stale: boolean }> {
-    const cache = this.store.get<{
+    const cache = await this.store.get<{
       models: ImageModel[];
       fetchedAt: string;
     } | null>("modelCatalog", null);
@@ -267,7 +267,7 @@ export class OpenRouter {
       if (!models.length)
         throw new Error("OpenRouter returned no image-generation models.");
       const result = { models, fetchedAt: new Date().toISOString() };
-      this.store.set("modelCatalog", result);
+      await this.store.set("modelCatalog", result);
       return { ...result, stale: false };
     } catch (error) {
       if (cache && !force) return { ...cache, stale: true };

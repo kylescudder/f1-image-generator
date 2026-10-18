@@ -1,10 +1,11 @@
-import test from "node:test";
+import { test } from "bun:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
-import { tmpdir } from "node:os";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
+import { SQL } from "bun";
 import sharp from "sharp";
+import { migrate } from "../server/schema.ts";
 import { Store } from "../server/db.ts";
 import {
   applyCalendar,
@@ -22,23 +23,28 @@ import {
   readImageUrl,
 } from "../server/openrouter.ts";
 import { Emby, inferSession, matchItem } from "../server/emby.ts";
-import { createApp, type Services } from "../server/app.ts";
+import { useServices, type Services } from "../server/services.ts";
+import { guardOverrides } from "../server/guard.ts";
+import { owner } from "../server/api.ts";
 import { config } from "../server/config.ts";
 import { sessionKeys, type ImageModel } from "../shared/types.ts";
 
 const root = process.cwd();
 const snapshot = (year: number) =>
   JSON.parse(readFileSync(`assets/calendars/${year}.json`, "utf8"));
-function fixture() {
-  const dir = mkdtempSync(path.join(tmpdir(), "paddock-test-"));
-  const store = new Store(dir);
+// An isolated database: tests refuse to run against anything not named *_test.
+const databaseUrl =
+  process.env.TEST_DATABASE_URL ||
+  "postgres://postgres:paddock@127.0.0.1:55432/paddock_test";
+if (!new URL(databaseUrl).pathname.endsWith("_test"))
+  throw new Error("TEST_DATABASE_URL must name a database ending in _test");
+const sql = new SQL(databaseUrl, { max: 4 });
+await migrate(sql);
+async function fixture() {
+  await sql`TRUNCATE state, events, backgrounds, jobs, attempts, mappings`;
   return {
-    dir,
-    store,
-    close() {
-      this.store.close();
-      rmSync(dir, { recursive: true, force: true });
-    },
+    store: await new Store(sql).open(),
+    close() {},
   };
 }
 const model: ImageModel = {
@@ -86,8 +92,8 @@ test("truncated or cross-season feeds cannot overwrite a valid calendar", () => 
   assert.throws(() => parseCalendar(data, 2026), /incomplete/);
   assert.throws(() => parseCalendar(snapshot(2026), 2025), /season/);
 });
-test("round/format changes preserve Emby mapping and stable image URL, invalidate render version, and archive removals", () => {
-  const f = fixture();
+test("round/format changes preserve Emby mapping and stable image URL, invalidate render version, and archive removals", async () => {
+  const f = await fixture();
   try {
     const incoming = parseCalendar(snapshot(2026), 2026);
     const singapore = incoming.find((event) => event.slug === "singapore")!;
@@ -96,10 +102,10 @@ test("round/format changes preserve Emby mapping and stable image URL, invalidat
         ? { ...event, round: 18, sprint: false }
         : event,
     );
-    applyCalendar(f.store, 2026, previous);
+    await applyCalendar(f.store, 2026, previous);
     const artwork = new Artwork(f.store, root, path.join(root, "data"));
-    const before = artwork.libraryEvent(f.store.event(singapore.id)!);
-    f.store.saveMapping({
+    const before = await artwork.libraryEvent((await f.store.event(singapore.id))!);
+    await f.store.saveMapping({
       eventId: singapore.id,
       session: "race",
       itemId: "episode-42",
@@ -109,30 +115,30 @@ test("round/format changes preserve Emby mapping and stable image URL, invalidat
       error: null,
     });
     const removed = incoming.find((event) => event.slug === "monaco")!;
-    applyCalendar(
+    await applyCalendar(
       f.store,
       2026,
       incoming.filter((event) => event.id !== removed.id),
     );
-    const after = artwork.libraryEvent(f.store.event(singapore.id)!);
+    const after = await artwork.libraryEvent((await f.store.event(singapore.id))!);
     assert.equal(after.images.length, 4);
     assert.equal(
       before.images.at(-1)!.png.split("?")[0],
       after.images.at(-1)!.png.split("?")[0],
     );
     assert.notEqual(before.images.at(-1)!.png, after.images.at(-1)!.png);
-    assert.equal(f.store.mappings()[0].itemId, "episode-42");
-    assert.equal(f.store.event(removed.id)?.cancelled, true);
+    assert.equal((await f.store.mappings())[0].itemId, "episode-42");
+    assert.equal((await f.store.event(removed.id))?.cancelled, true);
   } finally {
     f.close();
   }
 });
 test("completed seasons are not fetched or modified by later calendar syncs", async () => {
-  const f = fixture();
+  const f = await fixture();
   const years: string[] = [];
   try {
-    seedCalendars(f.store, root);
-    f.store.set("frozen:2025", true);
+    await seedCalendars(f.store, root);
+    await f.store.set("frozen:2025", true);
     await syncCalendars(f.store, new Date("2026-10-17T12:00:00Z"), (async (
       url,
     ) => {
@@ -147,7 +153,7 @@ test("completed seasons are not fetched or modified by later calendar syncs", as
       years.some((url) => url.includes("/2025/")),
       false,
     );
-    assert.ok(f.store.get("lastSync", null));
+    assert.ok(await f.store.get("lastSync", null));
   } finally {
     f.close();
   }
@@ -191,7 +197,7 @@ test("new generation models appear automatically, dedicated image route wins, an
   assert.ok(body.input_references);
 });
 test("model refresh uses live catalogues, preserves cache on transient failures and exposes stale state", async () => {
-  const f = fixture();
+  const f = await fixture();
   let fail = false;
   try {
     const router = new OpenRouter(
@@ -218,7 +224,7 @@ test("model refresh uses live catalogues, preserves cache on transient failures 
       }) as typeof fetch,
     );
     assert.equal((await router.models(true)).models[0].id, model.id);
-    f.store.set("modelCatalog", {
+    await f.store.set("modelCatalog", {
       ...(await router.models()),
       fetchedAt: "2020-01-01",
     });
@@ -230,7 +236,7 @@ test("model refresh uses live catalogues, preserves cache on transient failures 
   }
 });
 test("unified inference checks one provider capability map and never mixes unsupported fields", async () => {
-  const f = fixture();
+  const f = await fixture();
   let sent: Record<string, unknown> | null = null;
   try {
     const router = new OpenRouter(
@@ -268,36 +274,36 @@ test("unified inference checks one provider capability map and never mixes unsup
     f.close();
   }
 });
-test("monthly attempt reservations persist through restarts and reset by UTC month", () => {
-  const f = fixture();
+test("monthly attempt reservations persist through restarts and reset by UTC month", async () => {
+  const f = await fixture();
   try {
     for (let i = 0; i < 5; i++)
       assert.equal(
-        f.store.reserveAttempt(model.id, 5, new Date("2026-10-31T23:59:00Z")),
+        await f.store.reserveAttempt(model.id, 5, new Date("2026-10-31T23:59:00Z")),
         true,
       );
     assert.equal(
-      f.store.reserveAttempt(model.id, 5, new Date("2026-10-31T23:59:59Z")),
+      await f.store.reserveAttempt(model.id, 5, new Date("2026-10-31T23:59:59Z")),
       false,
     );
-    f.store.close();
-    f.store = new Store(f.dir);
-    assert.equal(f.store.attempts("2026-10"), 5);
+    // A restart opens a fresh store on the same database.
+    f.store = await new Store(sql).open();
+    assert.equal(await f.store.attempts("2026-10"), 5);
     assert.equal(
-      f.store.reserveAttempt(model.id, 5, new Date("2026-11-01T00:00:00Z")),
+      await f.store.reserveAttempt(model.id, 5, new Date("2026-11-01T00:00:00Z")),
       true,
     );
   } finally {
     f.close();
   }
 });
-test("new venue overrides cannot change historical seasons", () => {
-  const f = fixture();
+test("new venue overrides cannot change historical seasons", async () => {
+  const f = await fixture();
   try {
-    f.store.saveBackground("marina-bay:2026", "/fixture/new-venue.png", "new");
-    assert.equal(f.store.latestBackground("marina-bay", 2025), undefined);
-    assert.equal(f.store.latestBackground("marina-bay", 2026)?.version, "new");
-    assert.equal(f.store.latestBackground("marina-bay", 2027)?.version, "new");
+    await f.store.saveBackground("marina-bay:2026", "/fixture/new-venue.png", "new");
+    assert.equal(await f.store.latestBackground("marina-bay", 2025), undefined);
+    assert.equal((await f.store.latestBackground("marina-bay", 2026))?.version, "new");
+    assert.equal((await f.store.latestBackground("marina-bay", 2027))?.version, "new");
   } finally {
     f.close();
   }
@@ -341,13 +347,13 @@ test("Emby matching ignores mutable round numbers and distinguishes sprint quali
   assert.equal(inferSession("Race Highlights"), null);
 });
 test("Emby uploads a base64 PNG once per changed version, and keeps errors retryable", async () => {
-  const f = fixture();
+  const f = await fixture();
   let writes = 0;
   let fail = false;
   let version = "first";
   try {
-    seedCalendars(f.store, root);
-    f.store.saveMapping({
+    await seedCalendars(f.store, root);
+    await f.store.saveMapping({
       eventId: "2026-singapore",
       session: "race",
       itemId: "42",
@@ -387,60 +393,57 @@ test("Emby uploads a base64 PNG once per changed version, and keeps errors retry
     version = "second";
     fail = true;
     await emby.sync();
-    assert.equal(f.store.mappings()[0].lastImageVersion, "first");
-    assert.match(f.store.mappings()[0].error!, /500/);
+    assert.equal((await f.store.mappings())[0].lastImageVersion, "first");
+    assert.match((await f.store.mappings())[0].error!, /500/);
     fail = false;
     await emby.sync();
-    assert.equal(f.store.mappings()[0].lastImageVersion, "second");
-    assert.equal(f.store.mappings()[0].error, null);
+    assert.equal((await f.store.mappings())[0].lastImageVersion, "second");
+    assert.equal((await f.store.mappings())[0].error, null);
   } finally {
     f.close();
   }
 });
-test("real HTTP routes deny anonymous/other users and cross-origin mutations before any inference runs", async () => {
-  const f = fixture();
+test("owner routes deny anonymous/other users and cross-origin mutations before any inference runs", async () => {
+  const f = await fixture();
   let inferenceCalls = 0;
-  const jobs = {
-    generate: () => {
-      inferenceCalls++;
-      return { id: "queued" };
-    },
-    autoGenerate: () => {},
-  };
-  const app = createApp(
-    {
-      store: f.store,
-      artwork: {} as Artwork,
-      router: {} as OpenRouter,
-      emby: { configured: false } as Emby,
-      jobs,
-      config: {
-        ...config,
-        ownerId: "user_owner",
-        appUrl: "https://paddock.thescudders.org",
+  useServices({
+    store: f.store,
+    artwork: {} as Artwork,
+    router: {} as OpenRouter,
+    emby: { configured: false } as Emby,
+    jobs: {
+      generate: async () => {
+        inferenceCalls++;
+        return { id: "queued" };
       },
-    } as unknown as Services,
-    {
-      middleware: (_req, _res, next) => next(),
-      identity: (req) => ({
-        userId: (req.headers["x-test-user"] as string) || null,
-        isAuthenticated: Boolean(req.headers["x-test-user"]),
-      }),
+      autoGenerate: async () => {},
     },
-  );
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
-  const url = `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/admin/generate`;
+    config,
+  } as unknown as Services);
+  guardOverrides.current = {
+    config: {
+      clerkPublishableKey: "pk_test_fixture",
+      clerkSecretKey: "sk_test_fixture",
+      ownerId: "user_owner",
+      appUrl: "https://paddock.thescudders.org",
+    },
+    identity: (request) => {
+      const userId = request.headers.get("x-test-user");
+      return { userId: userId || null, isAuthenticated: Boolean(userId) };
+    },
+  };
   try {
     const send = (user: string, origin = "https://paddock.thescudders.org") =>
-      fetch(url, {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "X-Test-User": user,
-          Origin: origin,
-        },
-        body: JSON.stringify({ eventId: "2026-singapore" }),
+      owner.generate({
+        request: new Request("https://paddock.thescudders.org/api/admin/generate", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "X-Test-User": user,
+            Origin: origin,
+          },
+          body: JSON.stringify({ eventId: "2026-singapore" }),
+        }),
       });
     assert.equal((await send("")).status, 401);
     assert.equal((await send("user_other")).status, 403);
@@ -452,47 +455,39 @@ test("real HTTP routes deny anonymous/other users and cross-origin mutations bef
     assert.equal((await send("user_owner")).status, 202);
     assert.equal(inferenceCalls, 1);
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    guardOverrides.current = undefined;
+    useServices(undefined);
     f.close();
   }
 });
 test("without a configured owner all admin APIs fail closed", async () => {
-  const f = fixture();
-  const app = createApp({
-    store: f.store,
-    artwork: {} as Artwork,
-    router: {} as OpenRouter,
-    emby: {} as Emby,
-    jobs: {} as Services["jobs"],
+  const f = await fixture();
+  useServices({ store: f.store, config } as unknown as Services);
+  guardOverrides.current = {
     config: {
-      ...config,
-      ownerId: "",
       clerkPublishableKey: "",
       clerkSecretKey: "",
+      ownerId: "",
+      appUrl: "https://paddock.thescudders.org",
     },
-  });
-  const server = app.listen(0, "127.0.0.1");
-  await new Promise<void>((resolve) => server.once("listening", resolve));
+  };
   try {
-    assert.equal(
-      (
-        await fetch(
-          `http://127.0.0.1:${(server.address() as AddressInfo).port}/api/admin/status`,
-        )
-      ).status,
-      503,
-    );
+    const response = await owner.status({
+      request: new Request("https://paddock.thescudders.org/api/admin/status"),
+    });
+    assert.equal(response.status, 503);
   } finally {
-    await new Promise<void>((resolve) => server.close(() => resolve()));
+    guardOverrides.current = undefined;
+    useServices(undefined);
     f.close();
   }
 });
 test("rendered Singapore sprint output is an actual 4K PNG and SVG uses paths instead of system fonts", async () => {
-  const f = fixture();
+  const f = await fixture();
   try {
-    seedCalendars(f.store, root);
+    await seedCalendars(f.store, root);
     const artwork = new Artwork(f.store, root, path.join(root, "data"));
-    const event = f.store.event("2026-singapore")!;
+    const event = (await f.store.event("2026-singapore"))!;
     const svg = await artwork.svg(event, "sprint-qualifying");
     assert.ok(svg.includes("<path"));
     assert.ok(svg.includes("data:image/png;base64,"));
