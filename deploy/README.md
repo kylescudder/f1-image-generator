@@ -16,7 +16,7 @@ cd /Users/kyle/platform/apps/paddock
 python3 -B deploy/bootstrap-herman.py
 ```
 
-The bootstrap is resumable. It creates private directories and a signing secret, sends that secret to the repository's `production` environment through stdin, starts the receiver, and installs the LaunchAgent. It preserves existing private files. It creates `.env` with blank integration credentials; copy the approved Clerk, OpenRouter, and Emby configuration from Herman's existing secret store when permissions are ready. Set the exact `CLERK_OWNER_USER_ID`; until then every admin endpoint is denied and no automatic inference runs. The public gallery works without integration keys.
+The bootstrap is resumable. It creates private directories and a signing secret, sends that secret to the repository's `production` environment through stdin, starts the receiver, and installs the LaunchAgent. It preserves existing private files. It creates `.env` with blank integration credentials; copy the approved Clerk, OpenRouter, and Emby configuration from Herman's existing secret store when permissions are ready. Until the Clerk keys are set, every admin endpoint is denied and no automatic inference runs. The public gallery works without integration keys.
 
 ## Cloudflare
 

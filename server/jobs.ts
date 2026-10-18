@@ -104,7 +104,7 @@ export class Jobs {
       throw new Error("Generation is disabled for archived weekends.");
     if (!this.enabled || !this.inferenceReady)
       throw new Error(
-        "Configure Clerk owner access and OPENROUTER_API_KEY before generating.",
+        "Configure Clerk sign-in and OPENROUTER_API_KEY before generating.",
       );
     if (!(await this.store.settings()).modelId)
       throw new Error("Choose an image-generation model in Settings first.");

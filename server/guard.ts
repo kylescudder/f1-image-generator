@@ -9,25 +9,19 @@ export interface GuardOptions {
   identity?: (request: Request) => Identity | Promise<Identity>;
   config?: Pick<
     typeof config,
-    "clerkPublishableKey" | "clerkSecretKey" | "ownerId" | "appUrl"
+    "clerkPublishableKey" | "clerkSecretKey" | "appUrl"
   >;
 }
 export const guardOverrides: { current?: GuardOptions } = {};
 
 // Identity comes only from Clerk's cryptographically verified session token.
-export function ownerDecision(
-  identity: { userId: string | null; isAuthenticated?: boolean },
-  ownerId: string,
-): 200 | 401 | 403 | 503 {
-  if (!ownerId) return 503;
-  if (!identity.isAuthenticated || !identity.userId) return 401;
-  return identity.userId === ownerId ? 200 : 403;
+// Clerk is invite-only, so any signed-in user is trusted to administer.
+export function accessDecision(identity: {
+  userId: string | null;
+  isAuthenticated?: boolean;
+}): 200 | 401 {
+  return identity.isAuthenticated && identity.userId ? 200 : 401;
 }
-const messages: Record<number, string> = {
-  401: "Sign in to manage your library.",
-  403: "This library is managed by its owner only.",
-  503: "Owner access is not configured.",
-};
 async function clerkIdentity(
   request: Request,
   settings: NonNullable<GuardOptions["config"]>,
@@ -47,22 +41,23 @@ async function ownerGate(request: Request): Promise<Response | null> {
   const options = guardOverrides.current;
   const settings = options?.config ?? config;
   const configured = Boolean(
-    settings.clerkPublishableKey && settings.clerkSecretKey && settings.ownerId,
+    settings.clerkPublishableKey && settings.clerkSecretKey,
   );
   if (!configured && !options?.identity)
     return Response.json(
       {
-        error:
-          "Owner access is not configured. Set Clerk keys and CLERK_OWNER_USER_ID on Herman.",
+        error: "Sign-in is not configured. Set the Clerk keys on Herman.",
       },
       { status: 503 },
     );
   const identity = options?.identity
     ? await options.identity(request)
     : await clerkIdentity(request, settings);
-  const status = ownerDecision(identity, settings.ownerId);
-  if (status !== 200)
-    return Response.json({ error: messages[status] }, { status });
+  if (accessDecision(identity) !== 200)
+    return Response.json(
+      { error: "Sign in to manage your library." },
+      { status: 401 },
+    );
   if (
     !["GET", "HEAD", "OPTIONS"].includes(request.method) &&
     request.headers.get("origin") !== settings.appUrl
@@ -74,7 +69,7 @@ async function ownerGate(request: Request): Promise<Response | null> {
   return null;
 }
 
-// Wraps an owner-only handler: authenticate, authorise, then run it.
+// Wraps a signed-in-only handler: authenticate, then run it.
 export function admin(
   handler: (
     request: Request,

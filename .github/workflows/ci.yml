@@ -31,7 +31,7 @@ jobs:
           persist-credentials: false
       - name: Typecheck and build with the frozen lockfile, and prepare official fonts
         run: docker build --target build -t paddock:checks .
-      - name: Check formatting, rendering, calendar changes, model discovery, owner restrictions and Emby updates
+      - name: Check formatting, rendering, calendar changes, model discovery, admin sign-in restrictions and Emby updates
         run: |
           docker run --rm --network host \
             -e TEST_DATABASE_URL=postgres://paddock_test_owner@127.0.0.1:5432/paddock_test \

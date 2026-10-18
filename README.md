@@ -7,7 +7,7 @@ A calendar-aware Formula 1 artwork library for **paddock.thescudders.org**, host
 - Season/weekend gallery, full-size viewer, hover/focus copy-image button, stable URLs, PNG downloads and self-contained hybrid SVG masters.
 - Measured Formula1 typography, vector logo, per-venue colours, and current year/round. Normal weekends get two competitive sessions; sprint weekends get four.
 - Six-hour calendar checks and **Sync now**. Stable event identities survive round changes and relocations; cancellations are archived and completed seasons freeze after their final calendar.
-- **Clerk owner-only administration.** Every protected API checks the verified Clerk user ID against `CLERK_OWNER_USER_ID`. Other accounts cannot generate, change settings, inspect Emby, or run sync controls. Missing owner configuration denies all admin access and disables scheduled inference.
+- **Clerk sign-in administration.** Every protected API requires a verified Clerk session. Access is controlled by Clerk's invite-only sign-up: anyone you invite can generate, change settings, inspect Emby, and run sync controls. Missing Clerk keys denies all admin access and disables scheduled inference.
 - **OpenRouter image generation.** Settings discovers image models live, combining the dedicated Image API catalogue with older chat image models. No hardcoded model list or default paid model. Provider capabilities are checked before requests; unsupported parameters are omitted. Catalogue caching is one hour, with refresh and stale-cache indicators.
 - Missing venue backgrounds are generated once and reused. Initially five attempts per UTC month, persisted in PostgreSQL, including failures. Allowance and model are owner settings. Existing background/session/round composition makes no inference calls.
 - Reviewed Emby episode mappings and automatic direct PNG uploads. The app updates Emby's stored artwork rather than relying on changed hosted bytes.
@@ -43,7 +43,7 @@ Standalone Docker: `docker compose -f compose.local.yaml up --build -d`. Herman 
 
 ## Clerk and OpenRouter
 
-Set `CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`, and your exact `CLERK_OWNER_USER_ID` server-side. Configure Clerk's URLs for `https://paddock.thescudders.org` and restrict sign-ups to your account in its dashboard. The server ID check remains authoritative even if another account can sign in. No first-user-becomes-owner behavior exists.
+Set `CLERK_PUBLISHABLE_KEY` and `CLERK_SECRET_KEY` server-side. Configure Clerk's URLs for `https://paddock.thescudders.org` and keep sign-ups **invite-only** in its dashboard: the app trusts every signed-in user as an administrator, so opening sign-ups would give strangers admin access.
 
 Set `OPENROUTER_API_KEY`, restart the app, then sign into **Owner workspace → Settings**. Choose a live image model, supported quality/resolution, allowance, and whether to fill missing venues automatically. Saving with automation enabled queues missing active venues. Public visitors and non-owner accounts cannot reach the provider. Keys never enter the frontend build or API responses.
 

@@ -27,7 +27,7 @@ def main():
         secret.chmod(0o600)
     runtime = APP / '.env'
     if not runtime.exists():
-        runtime.write_text('APP_URL=https://paddock.thescudders.org\nPADDOCK_DATA_DIR=./data\nCLERK_PUBLISHABLE_KEY=\nCLERK_SECRET_KEY=\nCLERK_OWNER_USER_ID=\nOPENROUTER_API_KEY=\nEMBY_URL=\nEMBY_API_KEY=\n')
+        runtime.write_text('APP_URL=https://paddock.thescudders.org\nPADDOCK_DATA_DIR=./data\nCLERK_PUBLISHABLE_KEY=\nCLERK_SECRET_KEY=\nOPENROUTER_API_KEY=\nEMBY_URL=\nEMBY_API_KEY=\n')
         runtime.chmod(0o600)
     hook = APP / '.env.deploy-hook'
     if not hook.exists():
