@@ -14,5 +14,12 @@
     "skipLibCheck": true,
     "types": ["bun", "vite/client"]
   },
-  "include": ["src", "server", "shared", "scripts/*.ts", "tests", "vite.config.ts"]
+  "include": [
+    "src",
+    "server",
+    "shared",
+    "scripts/*.ts",
+    "tests",
+    "vite.config.ts"
+  ]
 }

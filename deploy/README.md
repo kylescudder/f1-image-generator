@@ -48,7 +48,9 @@ gh variable set DEPLOY_ENABLED --body true --repo kylescudder/f1-image-generator
 gh workflow run Release --ref main --repo kylescudder/f1-image-generator
 ```
 
-Release checks that Access blocks anonymous callers, unrelated hook paths return 404, and invalid HMAC signatures are rejected by the receiver. It then queues the exact digest and waits for the public health endpoint's `X-Paddock-Revision` to equal that commit. Herman verifies the repository, workflow, `refs/heads/main`, GitHub-hosted runner provenance, and requested revision independently before pulling.
+Release checks that Access blocks anonymous callers, unrelated hook paths return 404, and invalid HMAC signatures are rejected by the receiver. It then queues the exact digest and waits for two things: Herman's acknowledgement (an authenticated `GET` of the hook, returning `status: deployed` with the exact revision and image) and the public `X-Paddock-Revision` header equalling that commit. Herman verifies the repository, workflow, `refs/heads/main`, GitHub-hosted runner provenance, and requested revision independently before pulling.
+
+After starting a candidate, Herman runs `deploy/verify.ts` inside it. The read-only checks cover the restricted runtime database role, seeded calendar data, the frontend and fingerprinted assets, health revision and cache headers, the public library, PNG thumbnails with ETag/304, sandboxed SVG masters, 404s, and that owner APIs and generation refuse anonymous callers. Only after they pass does Herman write `state/public/deployment.json`, which the receiver exposes (revision and image only). A failed check restores the previous image and leaves the earlier acknowledgement in place, so CI cannot report an early green release. Recreate the receiver (`docker compose -f deploy/compose.deploy-hook.yaml --env-file .env.deploy-hook up -d`) after pulling this change so it mounts `state/public`.
 
 The private repository's GHCR package must be readable by Herman's existing registry credentials. No private registry credential is sent to GitHub by the deployer.
 

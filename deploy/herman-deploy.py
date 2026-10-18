@@ -126,6 +126,16 @@ def start(image):
             "const r=await fetch('http://127.0.0.1:3000/api/health'); if(!r.ok || !(await r.json()).ok) process.exit(1)", image=image)
 
 
+def verify(image):
+    compose('exec', '-T', 'web', 'bun', 'deploy/verify.ts', image=image)
+
+
+def publish_status(image, revision):
+    directory = STATE / 'public'
+    directory.mkdir(mode=0o700, exist_ok=True)
+    save_json(directory / 'deployment.json', {'revision':revision, 'image':image})
+
+
 def inspect_current(container):
     raw = run(['docker', 'inspect', '--format',
                '{{json .Config.Image}}|{{json .State}}|{{json .Config.Labels}}', container])
@@ -180,15 +190,17 @@ def deploy(digest, requested_revision=None):
         if not REVISION.fullmatch(revision) or requested_revision and requested_revision != revision:
             raise Error('Running image revision does not match the request.')
         log('requested digest is already healthy')
+        verify(candidate)
         pin(candidate)
+        publish_status(candidate, revision)
         return
     log(f'verifying {candidate}')
-    verify = ['gh', 'attestation', 'verify', f'oci://{candidate}', '--bundle-from-oci', '--repo', REPO,
+    attestation = ['gh', 'attestation', 'verify', f'oci://{candidate}', '--bundle-from-oci', '--repo', REPO,
          '--signer-workflow', REPO + '/.github/workflows/release.yml', '--source-ref', 'refs/heads/main',
          '--deny-self-hosted-runners']
     if requested_revision:
-        verify.extend(['--source-digest', requested_revision])
-    run(verify, timeout=180)
+        attestation.extend(['--source-digest', requested_revision])
+    run(attestation, timeout=180)
     run(['docker', 'pull', '--quiet', candidate], timeout=300)
     labels = json.loads(run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate])) or {}
     revision = labels.get('org.opencontainers.image.revision', '')
@@ -200,6 +212,7 @@ def deploy(digest, requested_revision=None):
     log('owner migrations applied; runtime remains restricted')
     try:
         start(candidate)
+        verify(candidate)
     except Error:
         log('candidate failed health check')
         if running and running != candidate:
@@ -218,6 +231,7 @@ def deploy(digest, requested_revision=None):
         stream.write(f'{stamp} {candidate} {revision}\n')
     save_json(STATE / 'deployment.json', {'deployed_at':stamp, 'image':candidate,
               'revision':revision, 'previous_image':running})
+    publish_status(candidate, revision)
     log(f'healthy on {candidate}')
 
 

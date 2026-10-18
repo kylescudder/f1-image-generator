@@ -130,9 +130,9 @@ jobs:
           DIGEST: ${{ steps.manifest.outputs.digest }}
         run: docker buildx imagetools create -t "$IMAGE:main" "$IMAGE@$DIGEST"
 
-  # Asks Herman to deploy the attested digest, then waits for the public site to
-  # report this commit. Herman verifies the attestation itself, so the webhook
-  # secret can only ever trigger a release that this workflow built from main.
+  # Asks Herman to deploy the attested digest, then waits for Herman to acknowledge
+  # that it passed acceptance checks and for the public site to report this commit.
+  # Herman verifies the attestation itself, so the webhook secret can only ever trigger a release that this workflow built from main.
   deploy:
     needs: publish
     if: vars.DEPLOY_ENABLED == 'true'
@@ -189,16 +189,25 @@ jobs:
             -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
             -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
             --data "$body"
-      - name: Wait for production to run this commit
+      - name: Wait for production to complete acceptance of this commit
+        env:
+          DIGEST: ${{ needs.publish.outputs.digest }}
+          CF_ACCESS_CLIENT_ID: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          CF_ACCESS_CLIENT_SECRET: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
         run: |
           for attempt in $(seq 60); do
+            accepted=$(curl --fail --silent --max-time 10 "$DEPLOY_URL" \
+              -H "CF-Access-Client-Id: $CF_ACCESS_CLIENT_ID" \
+              -H "CF-Access-Client-Secret: $CF_ACCESS_CLIENT_SECRET" \
+              | jq -r --arg revision "$GITHUB_SHA" --arg image "$IMAGE@$DIGEST" \
+                'if .revision == $revision and .image == $image then .status else "pending" end' || true)
             revision=$(curl --fail --silent --max-time 10 --dump-header - --output /dev/null "$HEALTH_URL" \
               | tr -d '\r' | awk -F': ' 'tolower($1) == "x-paddock-revision" {print $2}' || true)
-            if [ "$revision" = "$GITHUB_SHA" ]; then
-              echo "Production is running $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+            if [ "$accepted" = deployed ] && [ "$revision" = "$GITHUB_SHA" ]; then
+              echo "Herman accepted $IMAGE@$DIGEST after full checks; production is running $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 10
           done
-          echo "::error::Production did not report $GITHUB_SHA within 10 minutes (last: ${revision:-none}). Check state/deploy.log on Herman."
+          echo "::error::Production did not complete acceptance for $GITHUB_SHA within 10 minutes (last: ${revision:-none}, acceptance: ${accepted:-none}). Check state/deploy.log on Herman."
           exit 1

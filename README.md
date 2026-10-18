@@ -69,6 +69,6 @@ State lives in PostgreSQL (`paddock`, via Herman's existing platform database). 
 - [Font sources](docs/font-sources.md); `assets/artwork.json` contains measured layouts and provenance.
 - `python3 scripts/import-archive.py --archive ~/Archive.zip` reproduces the import with checked-in measurements. Optional `--inspect-ai` rebuilds measurements using PyMuPDF.
 - `bun run test` checks authorization, limits, discovery, rendering, calendar reconciliation and Emby uploads with isolated test providers.
-- Deploy tests cover signature/timestamp/path/queue gates, provenance rejection, backup failure and rollback.
+- Deploy tests cover signature/timestamp/path/queue gates, the acknowledgement endpoint, provenance rejection, backup and migration failure, failed acceptance and rollback. CI also enforces Prettier formatting (`bun run format:check`).
 
 Primary references: [Clerk](https://clerk.com/docs/references/tanstack-react-start/overview), [OpenRouter](https://openrouter.ai/docs/guides/overview/multimodal/image-generation), [Jolpica](https://github.com/jolpica/jolpica-f1/blob/main/docs/endpoints/races.md), [Emby](https://dev.emby.media/reference/RestAPI/ImageService/postItemsByIdImagesByType.html).

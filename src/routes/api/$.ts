@@ -5,6 +5,11 @@ const notFound = () =>
 
 export const Route = createFileRoute("/api/$")({
   server: {
-    handlers: { GET: notFound, POST: notFound, PUT: notFound, DELETE: notFound },
+    handlers: {
+      GET: notFound,
+      POST: notFound,
+      PUT: notFound,
+      DELETE: notFound,
+    },
   },
 });

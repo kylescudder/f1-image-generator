@@ -141,7 +141,8 @@ export const owner = {
       if (!catalog.models.some((model) => model.id === settings.modelId))
         return Response.json(
           {
-            error: "Choose a model from the current image-generation catalogue.",
+            error:
+              "Choose a model from the current image-generation catalogue.",
           },
           { status: 400 },
         );
@@ -190,7 +191,11 @@ export const owner = {
       const file = path.join(directory, `${event.venueKey}-${version}.png`);
       await writeFile(`${file}.tmp`, bytes);
       await rename(`${file}.tmp`, file);
-      await store.saveBackground(`${event.venueKey}:${event.season}`, file, version);
+      await store.saveBackground(
+        `${event.venueKey}:${event.season}`,
+        file,
+        version,
+      );
       if (emby.configured)
         // An update already in progress covers this change too.
         void jobs.syncEmby().catch(() => undefined);
@@ -216,7 +221,8 @@ export const owner = {
       values.map((item) => {
         const previous = existing.find(
           (mapping) =>
-            mapping.eventId === item.eventId && mapping.session === item.session,
+            mapping.eventId === item.eventId &&
+            mapping.session === item.session,
         );
         const same = previous?.itemId === item.itemId;
         return {
@@ -229,10 +235,8 @@ export const owner = {
     );
     return Response.json({ saved: values.length });
   }),
-  deleteMapping: admin(
-    async (_request, { params, services: { store } }) => {
-      await store.deleteMapping(params.eventId, params.session);
-      return Response.json({ ok: true });
-    },
-  ),
+  deleteMapping: admin(async (_request, { params, services: { store } }) => {
+    await store.deleteMapping(params.eventId, params.session);
+    return Response.json({ ok: true });
+  }),
 };

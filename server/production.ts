@@ -28,7 +28,10 @@ function secure(response: Response) {
 async function serve(request: Request) {
   const url = new URL(request.url);
   if (request.method === "GET" || request.method === "HEAD") {
-    const file = path.join(client, path.normalize(decodeURIComponent(url.pathname)));
+    const file = path.join(
+      client,
+      path.normalize(decodeURIComponent(url.pathname)),
+    );
     if (file.startsWith(`${client}${path.sep}`)) {
       const asset = Bun.file(file);
       if (await asset.exists())

@@ -20,6 +20,8 @@ const secret = readFileSync(
 if (secret.length < 32)
   throw new Error("Webhook secret must be at least 32 characters.");
 const spool = process.env.SPOOL_DIR || "/spool";
+const deployedStateFile =
+  process.env.DEPLOYED_STATE_FILE || "/release-state/deployment.json";
 const port = Number(process.env.PORT || 9000);
 const maxBody = 1024;
 const maxSkewSeconds = 300;
@@ -61,6 +63,31 @@ function parseRequest(body) {
 createServer((request, response) => {
   if (request.method === "GET" && request.url === "/healthz")
     return reply(response, 200, "ok");
+  // Acknowledgement written by Herman only after the candidate passes acceptance checks.
+  // Only the revision and the exact image reference are ever exposed.
+  if (request.method === "GET" && request.url === "/hooks/paddock") {
+    let status = { status: "pending" };
+    try {
+      const value = JSON.parse(readFileSync(deployedStateFile, "utf8"));
+      if (
+        /^[0-9a-f]{40}$/.test(value.revision) &&
+        /^ghcr\.io\/kylescudder\/f1-image-generator@sha256:[0-9a-f]{64}$/.test(
+          value.image,
+        )
+      )
+        status = {
+          status: "deployed",
+          revision: value.revision,
+          image: value.image,
+        };
+    } catch {}
+    response.writeHead(200, {
+      "Content-Type": "application/json; charset=utf-8",
+      "Cache-Control": "no-store",
+      "X-Paddock-Deploy-Hook": "1",
+    });
+    return response.end(JSON.stringify(status));
+  }
   if (request.method !== "POST" || request.url !== "/hooks/paddock")
     return reply(response, 404, "not found");
   const chunks = [];

@@ -27,6 +27,7 @@ class Deploy(unittest.TestCase):
         self.calls=[]
         self.backup = patch.object(module, 'backup_database').start()
         self.migrate = patch.object(module, 'migrate').start()
+        self.acceptance = patch.object(module, 'verify').start()
 
     def tearDown(self):
         for p in reversed(self.patches):p.stop()
@@ -145,6 +146,28 @@ class Deploy(unittest.TestCase):
         self.assertIn(module.IMAGE+'@'+D,(self.app/'.env').read_text())
         self.assertTrue((module.STATE/'history.log').exists())
         self.assertTrue((module.REQUESTS/'arriving.json').exists())
+        self.assertEqual(json.loads((module.STATE/'public/deployment.json').read_text()),
+                         {'revision':R,'image':module.IMAGE+'@'+D})
+
+    def test_failed_acceptance_restores_previous_without_acknowledging_candidate(self):
+        previous={'revision':'c'*40,'image':module.IMAGE+'@sha256:'+'d'*64}
+        (module.STATE/'public').mkdir()
+        module.save_json(module.STATE/'public/deployment.json',previous)
+        self.acceptance.side_effect=module.Error('API acceptance failed')
+        with patch.object(module,'run',self.fake_run),patch.object(module,'compose',self.fake_compose),patch.object(module,'start') as start:
+            with self.assertRaises(module.Error):module.deploy(D,R)
+            self.assertEqual([c.args[0] for c in start.call_args_list],[module.IMAGE+'@'+D,'previous'])
+        self.assertFalse((module.STATE/'deployment.json').exists())
+        self.assertEqual(json.loads((module.STATE/'public/deployment.json').read_text()),previous)
+        self.assertIn('PADDOCK_IMAGE=previous',(self.app/'.env').read_text())
+
+    def test_healthy_same_digest_rechecks_acceptance_before_acknowledging(self):
+        current={'Config':{'Image':module.IMAGE+'@'+D,'Labels':{'org.opencontainers.image.revision':R}},
+                 'State':{'Health':{'Status':'healthy'}}}
+        self.acceptance.side_effect=module.Error('database unavailable')
+        with patch.object(module,'inspect_current',return_value=current),patch.object(module,'compose',self.fake_compose):
+            with self.assertRaises(module.Error):module.deploy(D,R)
+        self.assertFalse((module.STATE/'public/deployment.json').exists())
 
 
 if __name__=='__main__':unittest.main()

@@ -49,7 +49,9 @@ export class Jobs {
         }
       },
     });
-    setImmediate(() => void this.drain().catch((error) => console.error(error)));
+    setImmediate(
+      () => void this.drain().catch((error) => console.error(error)),
+    );
     return job;
   }
   private async drain() {
@@ -60,11 +62,16 @@ export class Jobs {
         const item = this.queue.shift()!;
         await this.store.updateJob(item.job.id, "running", "Working…");
         try {
-          await this.store.updateJob(item.job.id, "completed", await item.run());
+          await this.store.updateJob(
+            item.job.id,
+            "completed",
+            await item.run(),
+          );
         } catch (error) {
           const message = this.redact(error);
           await this.store.updateJob(item.job.id, "failed", message);
-          if (item.job.kind === "sync") await this.store.set("syncError", message);
+          if (item.job.kind === "sync")
+            await this.store.set("syncError", message);
           if (item.job.kind === "generate" && item.job.eventId) {
             const event = await this.store.event(item.job.eventId);
             if (event)

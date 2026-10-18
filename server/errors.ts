@@ -9,7 +9,11 @@ export function safeError(error: unknown, secrets: string[]) {
   return message.slice(0, 1000);
 }
 export const redactSecrets = (error: unknown) =>
-  safeError(error, [config.openrouterKey, config.embyKey, config.clerkSecretKey]);
+  safeError(error, [
+    config.openrouterKey,
+    config.embyKey,
+    config.clerkSecretKey,
+  ]);
 export function errorResponse(error: unknown) {
   const message =
     error instanceof z.ZodError

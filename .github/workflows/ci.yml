@@ -4,6 +4,10 @@ on:
   workflow_call:
 permissions:
   contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 jobs:
   check:
     runs-on: ubuntu-24.04
@@ -25,16 +29,19 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Build checked source and prepare official fonts
+      - name: Typecheck and build with the frozen lockfile, and prepare official fonts
         run: docker build --target build -t paddock:checks .
-      - name: Verify rendering, calendar changes, model discovery, owner restrictions and Emby updates
+      - name: Check formatting, rendering, calendar changes, model discovery, owner restrictions and Emby updates
         run: |
           docker run --rm --network host \
             -e TEST_DATABASE_URL=postgres://paddock_test_owner@127.0.0.1:5432/paddock_test \
-            paddock:checks bun run test
-      - name: Verify signed webhook and bounded queue
-        run: docker run --rm -v "$PWD/deploy/receiver:/app:ro" -w /app node:24-bookworm-slim node --test server.test.mjs
-      - name: Verify deployment provenance, backups and rollback gates
+            paddock:checks sh -c 'bun run format:check && bun run test'
+      - name: Verify deployment provenance, acceptance, backup and rollback gates
         run: python3 -B -m unittest discover -s deploy -p 'test_*.py' -v
-      - name: Build production runtime
+      - name: Verify webhook authentication, acknowledgement and queue limits
+        run: |
+          docker run --rm -v "$PWD/deploy/receiver:/app:ro" -w /app \
+            node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402 \
+            node --test server.test.mjs
+      - name: Build the production runtime without publishing
         run: docker build --build-arg PADDOCK_REVISION="$GITHUB_SHA" -t paddock:ci .

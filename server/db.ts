@@ -28,7 +28,8 @@ export class Store {
     return row ? parse<T>(row.value) : fallback;
   }
   async set(key: string, value: unknown) {
-    await this.sql`INSERT INTO state (key, value) VALUES (${key}, ${JSON.stringify(value)}::jsonb)
+    await this
+      .sql`INSERT INTO state (key, value) VALUES (${key}, ${JSON.stringify(value)}::jsonb)
       ON CONFLICT (key) DO UPDATE SET value=excluded.value`;
   }
   async settings(): Promise<AppSettings> {
@@ -48,7 +49,10 @@ export class Store {
         : await this.sql`SELECT payload FROM events WHERE season=${season}`;
     return rows
       .map((row: { payload: unknown }) => parse<RaceEvent>(row.payload))
-      .sort((a: RaceEvent, b: RaceEvent) => a.season - b.season || a.round - b.round);
+      .sort(
+        (a: RaceEvent, b: RaceEvent) =>
+          a.season - b.season || a.round - b.round,
+      );
   }
   async event(id: string): Promise<RaceEvent | undefined> {
     const [row] = await this.sql`SELECT payload FROM events WHERE id=${id}`;
@@ -86,11 +90,13 @@ export class Store {
       .sort((a, b) => b.year - a.year)[0]?.value;
   }
   async saveBackground(venue: string, file: string, version: string) {
-    await this.sql`INSERT INTO backgrounds (venue, file, version) VALUES (${venue}, ${file}, ${version})
+    await this
+      .sql`INSERT INTO backgrounds (venue, file, version) VALUES (${venue}, ${file}, ${version})
       ON CONFLICT (venue) DO UPDATE SET file=excluded.file, version=excluded.version`;
   }
   async jobs(): Promise<Job[]> {
-    const rows = await this.sql`SELECT * FROM jobs ORDER BY created_at DESC LIMIT 30`;
+    const rows = await this
+      .sql`SELECT * FROM jobs ORDER BY created_at DESC LIMIT 30`;
     return rows.map((row: Record<string, unknown>) => ({
       id: row.id as string,
       kind: row.kind as Job["kind"],
@@ -115,7 +121,8 @@ export class Store {
       createdAt: new Date().toISOString(),
       finishedAt: null,
     };
-    await this.sql`INSERT INTO jobs (id, kind, event_id, status, message, created_at)
+    await this
+      .sql`INSERT INTO jobs (id, kind, event_id, status, message, created_at)
       VALUES (${job.id}, ${job.kind}, ${job.eventId}, ${job.status}, ${job.message}, ${job.createdAt})`;
     return job;
   }
@@ -124,19 +131,28 @@ export class Store {
       status === "running" || status === "queued"
         ? null
         : new Date().toISOString();
-    await this.sql`UPDATE jobs SET status=${status}, message=${message}, finished_at=${finished}
+    await this
+      .sql`UPDATE jobs SET status=${status}, message=${message}, finished_at=${finished}
       WHERE id=${id}`;
   }
-  async attempts(month = new Date().toISOString().slice(0, 7)): Promise<number> {
-    const [row] = await this.sql`SELECT count(*)::int AS count FROM attempts WHERE month=${month}`;
+  async attempts(
+    month = new Date().toISOString().slice(0, 7),
+  ): Promise<number> {
+    const [row] = await this
+      .sql`SELECT count(*)::int AS count FROM attempts WHERE month=${month}`;
     return Number(row?.count || 0);
   }
-  async reserveAttempt(model: string, limit: number, now = new Date()): Promise<boolean> {
+  async reserveAttempt(
+    model: string,
+    limit: number,
+    now = new Date(),
+  ): Promise<boolean> {
     const month = now.toISOString().slice(0, 7);
     return this.sql.begin(async (tx) => {
       // Serialises concurrent reservations so the monthly allowance can never be exceeded.
       await tx`SELECT pg_advisory_xact_lock(hashtext('paddock-attempts'))`;
-      const [row] = await tx`SELECT count(*)::int AS count FROM attempts WHERE month=${month}`;
+      const [row] =
+        await tx`SELECT count(*)::int AS count FROM attempts WHERE month=${month}`;
       if (Number(row.count) >= limit) return false;
       await tx`INSERT INTO attempts (id, month, model, created_at)
         VALUES (${randomUUID()}, ${month}, ${model}, ${now.toISOString()})`;
@@ -144,7 +160,8 @@ export class Store {
     });
   }
   async mappings(): Promise<EmbyMapping[]> {
-    const rows = await this.sql`SELECT * FROM mappings ORDER BY event_id, session`;
+    const rows = await this
+      .sql`SELECT * FROM mappings ORDER BY event_id, session`;
     return rows.map((row: Record<string, unknown>) => ({
       eventId: row.event_id as string,
       session: row.session as EmbyMapping["session"],
@@ -163,12 +180,14 @@ export class Store {
         last_image_version=excluded.last_image_version, last_synced_at=excluded.last_synced_at, error=excluded.error`;
   }
   async deleteMapping(eventId: string, session: string) {
-    await this.sql`DELETE FROM mappings WHERE event_id=${eventId} AND session=${session}`;
+    await this
+      .sql`DELETE FROM mappings WHERE event_id=${eventId} AND session=${session}`;
   }
   // Remaps are saved together: either every row changes or none do.
   async replaceMappings(values: EmbyMapping[]) {
     await this.sql.begin(async (tx) => {
-      for (const item of values) await this.saveMapping(item, tx as unknown as SQL);
+      for (const item of values)
+        await this.saveMapping(item, tx as unknown as SQL);
     });
   }
 }

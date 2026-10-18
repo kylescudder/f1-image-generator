@@ -104,7 +104,9 @@ test("round/format changes preserve Emby mapping and stable image URL, invalidat
     );
     await applyCalendar(f.store, 2026, previous);
     const artwork = new Artwork(f.store, root, path.join(root, "data"));
-    const before = await artwork.libraryEvent((await f.store.event(singapore.id))!);
+    const before = await artwork.libraryEvent(
+      (await f.store.event(singapore.id))!,
+    );
     await f.store.saveMapping({
       eventId: singapore.id,
       session: "race",
@@ -120,7 +122,9 @@ test("round/format changes preserve Emby mapping and stable image URL, invalidat
       2026,
       incoming.filter((event) => event.id !== removed.id),
     );
-    const after = await artwork.libraryEvent((await f.store.event(singapore.id))!);
+    const after = await artwork.libraryEvent(
+      (await f.store.event(singapore.id))!,
+    );
     assert.equal(after.images.length, 4);
     assert.equal(
       before.images.at(-1)!.png.split("?")[0],
@@ -279,18 +283,30 @@ test("monthly attempt reservations persist through restarts and reset by UTC mon
   try {
     for (let i = 0; i < 5; i++)
       assert.equal(
-        await f.store.reserveAttempt(model.id, 5, new Date("2026-10-31T23:59:00Z")),
+        await f.store.reserveAttempt(
+          model.id,
+          5,
+          new Date("2026-10-31T23:59:00Z"),
+        ),
         true,
       );
     assert.equal(
-      await f.store.reserveAttempt(model.id, 5, new Date("2026-10-31T23:59:59Z")),
+      await f.store.reserveAttempt(
+        model.id,
+        5,
+        new Date("2026-10-31T23:59:59Z"),
+      ),
       false,
     );
     // A restart opens a fresh store on the same database.
     f.store = await new Store(sql).open();
     assert.equal(await f.store.attempts("2026-10"), 5);
     assert.equal(
-      await f.store.reserveAttempt(model.id, 5, new Date("2026-11-01T00:00:00Z")),
+      await f.store.reserveAttempt(
+        model.id,
+        5,
+        new Date("2026-11-01T00:00:00Z"),
+      ),
       true,
     );
   } finally {
@@ -300,10 +316,20 @@ test("monthly attempt reservations persist through restarts and reset by UTC mon
 test("new venue overrides cannot change historical seasons", async () => {
   const f = await fixture();
   try {
-    await f.store.saveBackground("marina-bay:2026", "/fixture/new-venue.png", "new");
+    await f.store.saveBackground(
+      "marina-bay:2026",
+      "/fixture/new-venue.png",
+      "new",
+    );
     assert.equal(await f.store.latestBackground("marina-bay", 2025), undefined);
-    assert.equal((await f.store.latestBackground("marina-bay", 2026))?.version, "new");
-    assert.equal((await f.store.latestBackground("marina-bay", 2027))?.version, "new");
+    assert.equal(
+      (await f.store.latestBackground("marina-bay", 2026))?.version,
+      "new",
+    );
+    assert.equal(
+      (await f.store.latestBackground("marina-bay", 2027))?.version,
+      "new",
+    );
   } finally {
     f.close();
   }
@@ -435,15 +461,18 @@ test("owner routes deny anonymous/other users and cross-origin mutations before 
   try {
     const send = (user: string, origin = "https://paddock.thescudders.org") =>
       owner.generate({
-        request: new Request("https://paddock.thescudders.org/api/admin/generate", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            "X-Test-User": user,
-            Origin: origin,
+        request: new Request(
+          "https://paddock.thescudders.org/api/admin/generate",
+          {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "X-Test-User": user,
+              Origin: origin,
+            },
+            body: JSON.stringify({ eventId: "2026-singapore" }),
           },
-          body: JSON.stringify({ eventId: "2026-singapore" }),
-        }),
+        ),
       });
     assert.equal((await send("")).status, 401);
     assert.equal((await send("user_other")).status, 403);
