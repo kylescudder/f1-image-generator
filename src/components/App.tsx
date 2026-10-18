@@ -28,11 +28,12 @@ import {
   Search,
   Settings2,
   Sparkles,
-  Upload,
   X,
   Zap,
 } from "lucide-react";
 import { libraryQuery } from "../lib/library";
+import { errorMessage, post, request } from "../lib/api";
+import { Studio } from "./Studio";
 import {
   sessions,
   type AdminStatus,
@@ -45,21 +46,6 @@ import {
   type SessionKey,
 } from "../../shared/types.ts";
 
-async function request<T>(url: string, init?: RequestInit): Promise<T> {
-  const response = await fetch(url, {
-    ...init,
-    headers: {
-      ...init?.headers,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-    },
-  });
-  const data = await response.json();
-  if (!response.ok)
-    throw new Error(data.error || `Request failed (${response.status}).`);
-  return data as T;
-}
-const post = <T,>(url: string, body?: unknown) =>
-  request<T>(url, { method: "POST", body: JSON.stringify(body || {}) });
 const raceLabel = (event: LibraryEvent) =>
   event.name
     .replace(/ Grand Prix.*$/i, "")
@@ -88,8 +74,6 @@ const timestamp = (value: string | null) =>
         minute: "2-digit",
       })
     : "Not yet";
-const errorMessage = (error: unknown) =>
-  error instanceof Error ? error.message : "Something went wrong.";
 
 function Brand() {
   return (
@@ -774,15 +758,20 @@ function ImageViewer({
   );
 }
 
+interface StudioRoute {
+  studio?: string;
+  openStudio: (eventId?: string) => void;
+}
 export function AdminGate({
   authConfigured,
   hasClerk,
   notify,
+  ...route
 }: {
   authConfigured: boolean;
   hasClerk: boolean;
   notify: (text: string) => void;
-}) {
+} & StudioRoute) {
   if (!authConfigured || !hasClerk)
     return (
       <main className="setup-page">
@@ -819,9 +808,12 @@ export function AdminGate({
         </Link>
       </main>
     );
-  return <AuthenticatedAdmin notify={notify} />;
+  return <AuthenticatedAdmin notify={notify} {...route} />;
 }
-function AuthenticatedAdmin({ notify }: { notify: (text: string) => void }) {
+function AuthenticatedAdmin({
+  notify,
+  ...route
+}: { notify: (text: string) => void } & StudioRoute) {
   const { isLoaded, isSignedIn } = useAuth();
   const [owner, setOwner] = useState(false);
   const [error, setError] = useState("");
@@ -860,7 +852,7 @@ function AuthenticatedAdmin({ notify }: { notify: (text: string) => void }) {
       </main>
     );
   return owner ? (
-    <Admin notify={notify} />
+    <Admin notify={notify} {...route} />
   ) : (
     <div className="library-loading">
       <LoaderCircle className="spin" />
@@ -869,7 +861,11 @@ function AuthenticatedAdmin({ notify }: { notify: (text: string) => void }) {
   );
 }
 
-function Admin({ notify }: { notify: (text: string) => void }) {
+function Admin({
+  notify,
+  studio,
+  openStudio,
+}: { notify: (text: string) => void } & StudioRoute) {
   const [status, setStatus] = useState<AdminStatus | null>(null);
   const [settings, setSettings] = useState<AppSettings | null>(null);
   const [error, setError] = useState("");
@@ -976,6 +972,18 @@ function Admin({ notify }: { notify: (text: string) => void }) {
         <LoaderCircle className="spin" />
         Opening your workspace…
       </div>
+    );
+  if (studio)
+    return (
+      <Studio
+        key={studio}
+        eventId={studio}
+        notify={notify}
+        onBack={() => {
+          openStudio(undefined);
+          void reload().catch(() => {});
+        }}
+      />
     );
   const model = models.find((model) => model.id === settings.modelId);
   const options = (field: string) =>
@@ -1295,7 +1303,7 @@ function Admin({ notify }: { notify: (text: string) => void }) {
                 </div>
                 <div>
                   <h2>Venue artwork</h2>
-                  <p>Generate a new scene or bring your own.</p>
+                  <p>Generate, refine and recolour a weekend’s thumbnail.</p>
                 </div>
               </div>
               <label className="field">
@@ -1315,69 +1323,19 @@ function Admin({ notify }: { notify: (text: string) => void }) {
               </label>
               {selected && (
                 <p className="field-hint">
-                  {selected.circuit}, {selected.country}. Replacing its
-                  background updates all sessions using this venue.
+                  {selected.circuit}, {selected.country}. Changes stay a draft
+                  until you use them, then update every session.
                 </p>
               )}
               <div className="button-row">
                 <button
                   className="button secondary"
-                  disabled={
-                    Boolean(busy) ||
-                    !selectedEvent ||
-                    !status.configured.openrouter ||
-                    !status.settings.modelId
-                  }
-                  onClick={() =>
-                    void act(
-                      "generate",
-                      () =>
-                        post("/api/admin/generate", { eventId: selectedEvent }),
-                      "Background generation queued. Follow progress in Activity.",
-                    )
-                  }
+                  disabled={!selectedEvent}
+                  onClick={() => openStudio(selectedEvent)}
                 >
                   <Sparkles size={14} />
-                  Generate background
+                  Open studio
                 </button>
-                <label
-                  className={`button secondary upload-button ${!selectedEvent || busy ? "disabled" : ""}`}
-                >
-                  <Upload size={14} />
-                  Upload
-                  <input
-                    type="file"
-                    accept="image/png,image/jpeg,image/webp"
-                    disabled={!selectedEvent || Boolean(busy)}
-                    onChange={(event) => {
-                      const file = event.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 20 * 1024 * 1024) {
-                        setError("Choose an image smaller than 20 MB.");
-                        return;
-                      }
-                      void act(
-                        "upload",
-                        async () => {
-                          const image = await new Promise<string>(
-                            (resolve, reject) => {
-                              const reader = new FileReader();
-                              reader.onload = () =>
-                                resolve(String(reader.result));
-                              reader.onerror = reject;
-                              reader.readAsDataURL(file);
-                            },
-                          );
-                          await post("/api/admin/background", {
-                            eventId: selectedEvent,
-                            image,
-                          });
-                        },
-                        "Venue background replaced.",
-                      );
-                    }}
-                  />
-                </label>
               </div>
             </section>
             <div className="owner-note">
@@ -1744,9 +1702,11 @@ function Admin({ notify }: { notify: (text: string) => void }) {
                 <strong>
                   {job.kind === "generate"
                     ? "Background generation"
-                    : job.kind === "emby"
-                      ? "Emby artwork update"
-                      : "Calendar sync"}
+                    : job.kind === "studio"
+                      ? "Studio image request"
+                      : job.kind === "emby"
+                        ? "Emby artwork update"
+                        : "Calendar sync"}
                   {job.eventId && <span> · {job.eventId}</span>}
                 </strong>
                 <p>{job.message}</p>

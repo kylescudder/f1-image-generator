@@ -4,15 +4,55 @@ import type {
   AppSettings,
   EmbyMapping,
   Job,
+  OverlayColours,
   RaceEvent,
+  StudioVersion,
 } from "../shared/types.ts";
 
 type Background = { file: string; version: string };
+export interface StoredVersion {
+  id: string;
+  venue: string;
+  file: string;
+  version: string;
+  source: StudioVersion["source"];
+  parentId: string | null;
+  feedback: string | null;
+  prompt: string | null;
+  model: string | null;
+  createdAt: string;
+}
+export interface StoredDraft {
+  selectedVersionId: string | null;
+  colours: OverlayColours;
+  updatedAt: string;
+}
 const iso = (value: Date | string | null) =>
   value === null ? null : new Date(value).toISOString();
 // Bun returns JSONB as text; both text and parsed values are accepted.
 const parse = <T>(value: unknown) =>
   (typeof value === "string" ? JSON.parse(value) : value) as T;
+const job = (row: Record<string, unknown>): Job => ({
+  id: row.id as string,
+  kind: row.kind as Job["kind"],
+  eventId: row.event_id as string | null,
+  status: row.status as Job["status"],
+  message: row.message as string,
+  createdAt: iso(row.created_at as Date)!,
+  finishedAt: iso(row.finished_at as Date | null),
+});
+const storedVersion = (row: Record<string, unknown>): StoredVersion => ({
+  id: row.id as string,
+  venue: row.venue as string,
+  file: row.file as string,
+  version: row.version as string,
+  source: row.source as StoredVersion["source"],
+  parentId: row.parent_id as string | null,
+  feedback: row.feedback as string | null,
+  prompt: row.prompt as string | null,
+  model: row.model as string | null,
+  createdAt: iso(row.created_at as Date)!,
+});
 
 export class Store {
   constructor(public sql: SQL) {}
@@ -96,18 +136,80 @@ export class Store {
       .sql`INSERT INTO backgrounds (venue, file, version) VALUES (${venue}, ${file}, ${version})
       ON CONFLICT (venue) DO UPDATE SET file=excluded.file, version=excluded.version`;
   }
+  async overlays(): Promise<Map<string, OverlayColours>> {
+    const rows = await this.sql`SELECT venue, colours FROM overlays`;
+    return new Map(
+      rows.map((row: { venue: string; colours: unknown }) => [
+        row.venue,
+        parse<OverlayColours>(row.colours),
+      ]),
+    );
+  }
+  async overlay(venue: string): Promise<OverlayColours | undefined> {
+    const [row] = await this
+      .sql`SELECT colours FROM overlays WHERE venue=${venue}`;
+    return row ? parse<OverlayColours>(row.colours) : undefined;
+  }
+  async saveOverlay(venue: string, colours: OverlayColours | null) {
+    if (!colours) await this.sql`DELETE FROM overlays WHERE venue=${venue}`;
+    else
+      await this
+        .sql`INSERT INTO overlays (venue, colours) VALUES (${venue}, ${JSON.stringify(colours)}::jsonb)
+        ON CONFLICT (venue) DO UPDATE SET colours=excluded.colours`;
+  }
+  async studioVersions(venue: string): Promise<StoredVersion[]> {
+    const rows = await this
+      .sql`SELECT * FROM studio_versions WHERE venue=${venue} ORDER BY created_at, id`;
+    return rows.map(storedVersion);
+  }
+  async studioVersion(id: string): Promise<StoredVersion | undefined> {
+    const [row] = await this.sql`SELECT * FROM studio_versions WHERE id=${id}`;
+    return row ? storedVersion(row) : undefined;
+  }
+  // The same image is recorded once per venue; re-adding it returns the existing version.
+  async addStudioVersion(
+    value: Omit<StoredVersion, "id" | "createdAt">,
+  ): Promise<StoredVersion> {
+    const id = randomUUID();
+    await this
+      .sql`INSERT INTO studio_versions (id, venue, file, version, source, parent_id, feedback, prompt, model, created_at)
+      VALUES (${id}, ${value.venue}, ${value.file}, ${value.version}, ${value.source}, ${value.parentId},
+        ${value.feedback}, ${value.prompt}, ${value.model}, ${new Date().toISOString()})
+      ON CONFLICT (venue, version) DO NOTHING`;
+    const [row] = await this
+      .sql`SELECT * FROM studio_versions WHERE venue=${value.venue} AND version=${value.version}`;
+    return storedVersion(row);
+  }
+  async studioDraft(venue: string): Promise<StoredDraft | undefined> {
+    const [row] = await this
+      .sql`SELECT * FROM studio_drafts WHERE venue=${venue}`;
+    return row
+      ? {
+          selectedVersionId: row.selected_version_id as string | null,
+          colours: parse<OverlayColours>(row.colours),
+          updatedAt: iso(row.updated_at as Date)!,
+        }
+      : undefined;
+  }
+  async saveStudioDraft(venue: string, draft: Omit<StoredDraft, "updatedAt">) {
+    await this
+      .sql`INSERT INTO studio_drafts (venue, selected_version_id, colours, updated_at)
+      VALUES (${venue}, ${draft.selectedVersionId}, ${JSON.stringify(draft.colours)}::jsonb, ${new Date().toISOString()})
+      ON CONFLICT (venue) DO UPDATE SET selected_version_id=excluded.selected_version_id,
+        colours=excluded.colours, updated_at=excluded.updated_at`;
+  }
+  async deleteStudioDraft(venue: string) {
+    await this.sql`DELETE FROM studio_drafts WHERE venue=${venue}`;
+  }
+  async latestJob(kind: Job["kind"], eventId: string): Promise<Job | null> {
+    const [row] = await this
+      .sql`SELECT * FROM jobs WHERE kind=${kind} AND event_id=${eventId} ORDER BY created_at DESC LIMIT 1`;
+    return row ? job(row) : null;
+  }
   async jobs(): Promise<Job[]> {
     const rows = await this
       .sql`SELECT * FROM jobs ORDER BY created_at DESC LIMIT 30`;
-    return rows.map((row: Record<string, unknown>) => ({
-      id: row.id as string,
-      kind: row.kind as Job["kind"],
-      eventId: row.event_id as string | null,
-      status: row.status as Job["status"],
-      message: row.message as string,
-      createdAt: iso(row.created_at as Date)!,
-      finishedAt: iso(row.finished_at as Date | null),
-    }));
+    return rows.map(job);
   }
   async createJob(
     kind: Job["kind"],

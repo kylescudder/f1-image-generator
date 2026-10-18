@@ -246,6 +246,7 @@ export class Emby {
     let updated = 0;
     let failed = 0;
     const index = await this.store.backgrounds();
+    const overlays = await this.store.overlays();
     for (const mapping of await this.store.mappings()) {
       const event = await this.store.event(mapping.eventId);
       if (
@@ -255,7 +256,12 @@ export class Emby {
         !(await this.artwork.background(event, index))
       )
         continue;
-      const version = await this.artwork.version(event, mapping.session, index);
+      const version = await this.artwork.version(
+        event,
+        mapping.session,
+        index,
+        overlays,
+      );
       if (mapping.lastImageVersion === version) continue;
       try {
         const bytes = await this.artwork.png(event, mapping.session, 3840);

@@ -43,7 +43,7 @@ if (!new URL(databaseUrl).pathname.endsWith("_test"))
 const sql = new SQL(databaseUrl, { max: 4 });
 await migrate(sql);
 async function fixture() {
-  await sql`TRUNCATE state, events, backgrounds, jobs, attempts, mappings`;
+  await sql`TRUNCATE state, events, backgrounds, jobs, attempts, mappings, overlays, studio_versions, studio_drafts`;
   return {
     store: await new Store(sql).open(),
     close() {},

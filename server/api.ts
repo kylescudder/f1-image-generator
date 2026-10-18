@@ -1,12 +1,10 @@
-import { mkdir, writeFile, rename } from "node:fs/promises";
-import path from "node:path";
-import { createHash } from "node:crypto";
 import sharp from "sharp";
 import { z } from "zod";
 import { buildLibrary, SeasonNotFound } from "./library.ts";
 import { admin } from "./guard.ts";
 import { errorResponse } from "./errors.ts";
 import { services } from "./services.ts";
+import { saveImage } from "./jobs.ts";
 import { sessionKeys, type SessionKey } from "../shared/types.ts";
 
 // Framework-agnostic request handlers; src/routes only maps URLs onto these.
@@ -191,15 +189,11 @@ export const owner = {
         .rotate()
         .png()
         .toBuffer();
-      const version = createHash("sha256")
-        .update(bytes)
-        .digest("hex")
-        .slice(0, 24);
-      const directory = path.join(config.dataDir, "backgrounds");
-      await mkdir(directory, { recursive: true });
-      const file = path.join(directory, `${event.venueKey}-${version}.png`);
-      await writeFile(`${file}.tmp`, bytes);
-      await rename(`${file}.tmp`, file);
+      const { file, version } = await saveImage(
+        config.dataDir,
+        event.venueKey,
+        bytes,
+      );
       await store.saveBackground(
         `${event.venueKey}:${event.season}`,
         file,
