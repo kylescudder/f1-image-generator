@@ -1,6 +1,8 @@
 import { test } from "bun:test";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
+import { mkdtemp, cp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import type { AddressInfo } from "node:net";
 import { SQL } from "bun";
@@ -25,7 +27,7 @@ import {
 import { Emby, inferSession, matchItem } from "../server/emby.ts";
 import { useServices, type Services } from "../server/services.ts";
 import { guardOverrides } from "../server/guard.ts";
-import { owner } from "../server/api.ts";
+import { image, owner } from "../server/api.ts";
 import { config } from "../server/config.ts";
 import { sessionKeys, type ImageModel } from "../shared/types.ts";
 
@@ -524,6 +526,78 @@ test("rendered Singapore sprint output is an actual 4K PNG and SVG uses paths in
     assert.equal(metadata.height, 2160);
     assert.equal(metadata.format, "png");
   } finally {
+    f.close();
+  }
+});
+
+test("large saved backgrounds load through thumbnail and 4K image endpoints", async () => {
+  const f = await fixture();
+  const dataDir = await mkdtemp(path.join(tmpdir(), "paddock-large-image-"));
+  try {
+    await seedCalendars(f.store, root);
+    await cp(path.join(root, "data/fonts"), path.join(dataDir, "fonts"), {
+      recursive: true,
+    });
+    // Detailed provider output can exceed libxml's 10 MB attribute limit
+    // once embedded as base64. Seeded noise keeps this fixture reproducible.
+    const pixels = Buffer.alloc(2304 * 1296 * 3);
+    let seed = 42;
+    for (let index = 0; index < pixels.length; index++) {
+      seed ^= seed << 13;
+      seed ^= seed >>> 17;
+      seed ^= seed << 5;
+      pixels[index] = seed & 255;
+    }
+    // A known patch ensures the result includes the saved background pixels.
+    for (let y = 600; y < 700; y++)
+      for (let x = 1100; x < 1200; x++)
+        pixels.set([33, 77, 121], (y * 2304 + x) * 3);
+    const background = await sharp(pixels, {
+      raw: { width: 2304, height: 1296, channels: 3 },
+    })
+      .png()
+      .toBuffer();
+    assert.ok(background.toString("base64").length > 10_000_000);
+    const file = path.join(dataDir, "large.png");
+    await writeFile(file, background);
+    await f.store.saveBackground("melbourne:2026", file, "large-background");
+    const artwork = new Artwork(f.store, root, dataDir);
+    useServices({ store: f.store, artwork } as Services);
+    const event = (await f.store.event("2026-australian"))!;
+    const entry = await artwork.libraryEvent(event);
+    assert.equal(entry.backgroundReady, true);
+    for (const variant of entry.images) {
+      for (const [url, width, height] of [
+        [variant.thumbnail, 640, 360],
+        [variant.png, 3840, 2160],
+      ] as const) {
+        const response = await image(new Request(`http://localhost${url}`), {
+          season: "2026",
+          slug: "australian",
+          file: `${variant.session}.png`,
+        });
+        assert.equal(
+          response.status,
+          200,
+          response.ok ? "Expected a rendered PNG" : await response.text(),
+        );
+        assert.equal(response.headers.get("Content-Type"), "image/png");
+        const bytes = await response.arrayBuffer();
+        const metadata = await sharp(bytes).metadata();
+        assert.equal(metadata.width, width);
+        assert.equal(metadata.height, height);
+        assert.equal(metadata.format, "png");
+        const center = await sharp(bytes)
+          .extract({ left: width / 2, top: height / 2, width: 1, height: 1 })
+          .removeAlpha()
+          .raw()
+          .toBuffer();
+        assert.deepEqual(center, Buffer.from([33, 77, 121]));
+      }
+    }
+  } finally {
+    useServices(undefined);
+    await rm(dataDir, { recursive: true, force: true });
     f.close();
   }
 });
