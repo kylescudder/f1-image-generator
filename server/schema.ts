@@ -44,4 +44,29 @@ export async function migrate(sql: SQL) {
     error TEXT,
     PRIMARY KEY (event_id, session)
   )`;
+  // Approved overlay colours per venue and season; absent means design-source defaults.
+  await sql`CREATE TABLE IF NOT EXISTS overlays (
+    venue TEXT PRIMARY KEY,
+    colours JSONB NOT NULL
+  )`;
+  // Studio candidates. Nothing here is live until a version is approved.
+  await sql`CREATE TABLE IF NOT EXISTS studio_versions (
+    id TEXT PRIMARY KEY,
+    venue TEXT NOT NULL,
+    file TEXT NOT NULL,
+    version TEXT NOT NULL,
+    source TEXT NOT NULL,
+    parent_id TEXT,
+    feedback TEXT,
+    prompt TEXT,
+    model TEXT,
+    created_at TIMESTAMPTZ NOT NULL,
+    UNIQUE (venue, version)
+  )`;
+  await sql`CREATE TABLE IF NOT EXISTS studio_drafts (
+    venue TEXT PRIMARY KEY,
+    selected_version_id TEXT,
+    colours JSONB NOT NULL,
+    updated_at TIMESTAMPTZ NOT NULL
+  )`;
 }

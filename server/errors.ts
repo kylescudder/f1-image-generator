@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { config } from "./config.ts";
 
+// A problem with what was asked for, rather than a failure while doing it.
+export class RequestError extends Error {}
 export function safeError(error: unknown, secrets: string[]) {
   let message =
     error instanceof Error ? error.message : "Something went wrong. Try again.";
@@ -20,7 +22,7 @@ export function errorResponse(error: unknown) {
       ? "Some fields are invalid. Check your settings and try again."
       : redactSecrets(error);
   const status =
-    error instanceof z.ZodError
+    error instanceof z.ZodError || error instanceof RequestError
       ? 400
       : /already queued|duplicate key|already.*running/.test(message)
         ? 409

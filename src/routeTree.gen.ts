@@ -27,8 +27,14 @@ import { Route as ApiAdminEmbyLibrariesRouteImport } from './routes/api/admin/em
 import { Route as ApiAdminEmbyMappingsRouteImport } from './routes/api/admin/emby/mappings'
 import { Route as ApiAdminEmbyShowsRouteImport } from './routes/api/admin/emby/shows'
 import { Route as ApiAdminEmbySyncRouteImport } from './routes/api/admin/emby/sync'
+import { Route as ApiAdminStudioEventIdRouteImport } from './routes/api/admin/studio/$eventId'
 import { Route as ImagesSeasonSlugFileRouteImport } from './routes/images/$season/$slug/$file'
+import { Route as ApiAdminStudioEventIdApproveRouteImport } from './routes/api/admin/studio/$eventId/approve'
+import { Route as ApiAdminStudioEventIdDraftRouteImport } from './routes/api/admin/studio/$eventId/draft'
+import { Route as ApiAdminStudioEventIdGenerateRouteImport } from './routes/api/admin/studio/$eventId/generate'
+import { Route as ApiAdminStudioEventIdUploadRouteImport } from './routes/api/admin/studio/$eventId/upload'
 import { Route as ApiAdminEmbyMappingsEventIdSessionRouteImport } from './routes/api/admin/emby/mappings/$eventId/$session'
+import { Route as ApiAdminStudioEventIdVersionsVersionIdRouteImport } from './routes/api/admin/studio/$eventId/versions/$versionId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -120,16 +126,51 @@ const ApiAdminEmbySyncRoute = ApiAdminEmbySyncRouteImport.update({
   path: '/api/admin/emby/sync',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminStudioEventIdRoute = ApiAdminStudioEventIdRouteImport.update({
+  id: '/api/admin/studio/$eventId',
+  path: '/api/admin/studio/$eventId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ImagesSeasonSlugFileRoute = ImagesSeasonSlugFileRouteImport.update({
   id: '/images/$season/$slug/$file',
   path: '/images/$season/$slug/$file',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminStudioEventIdApproveRoute =
+  ApiAdminStudioEventIdApproveRouteImport.update({
+    id: '/approve',
+    path: '/approve',
+    getParentRoute: () => ApiAdminStudioEventIdRoute,
+  } as any)
+const ApiAdminStudioEventIdDraftRoute =
+  ApiAdminStudioEventIdDraftRouteImport.update({
+    id: '/draft',
+    path: '/draft',
+    getParentRoute: () => ApiAdminStudioEventIdRoute,
+  } as any)
+const ApiAdminStudioEventIdGenerateRoute =
+  ApiAdminStudioEventIdGenerateRouteImport.update({
+    id: '/generate',
+    path: '/generate',
+    getParentRoute: () => ApiAdminStudioEventIdRoute,
+  } as any)
+const ApiAdminStudioEventIdUploadRoute =
+  ApiAdminStudioEventIdUploadRouteImport.update({
+    id: '/upload',
+    path: '/upload',
+    getParentRoute: () => ApiAdminStudioEventIdRoute,
+  } as any)
 const ApiAdminEmbyMappingsEventIdSessionRoute =
   ApiAdminEmbyMappingsEventIdSessionRouteImport.update({
     id: '/$eventId/$session',
     path: '/$eventId/$session',
     getParentRoute: () => ApiAdminEmbyMappingsRoute,
+  } as any)
+const ApiAdminStudioEventIdVersionsVersionIdRoute =
+  ApiAdminStudioEventIdVersionsVersionIdRouteImport.update({
+    id: '/versions/$versionId',
+    path: '/versions/$versionId',
+    getParentRoute: () => ApiAdminStudioEventIdRoute,
   } as any)
 
 export interface FileRoutesByFullPath {
@@ -151,8 +192,14 @@ export interface FileRoutesByFullPath {
   '/api/admin/emby/mappings': typeof ApiAdminEmbyMappingsRouteWithChildren
   '/api/admin/emby/shows': typeof ApiAdminEmbyShowsRoute
   '/api/admin/emby/sync': typeof ApiAdminEmbySyncRoute
+  '/api/admin/studio/$eventId': typeof ApiAdminStudioEventIdRouteWithChildren
   '/images/$season/$slug/$file': typeof ImagesSeasonSlugFileRoute
+  '/api/admin/studio/$eventId/approve': typeof ApiAdminStudioEventIdApproveRoute
+  '/api/admin/studio/$eventId/draft': typeof ApiAdminStudioEventIdDraftRoute
+  '/api/admin/studio/$eventId/generate': typeof ApiAdminStudioEventIdGenerateRoute
+  '/api/admin/studio/$eventId/upload': typeof ApiAdminStudioEventIdUploadRoute
   '/api/admin/emby/mappings/$eventId/$session': typeof ApiAdminEmbyMappingsEventIdSessionRoute
+  '/api/admin/studio/$eventId/versions/$versionId': typeof ApiAdminStudioEventIdVersionsVersionIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -173,8 +220,14 @@ export interface FileRoutesByTo {
   '/api/admin/emby/mappings': typeof ApiAdminEmbyMappingsRouteWithChildren
   '/api/admin/emby/shows': typeof ApiAdminEmbyShowsRoute
   '/api/admin/emby/sync': typeof ApiAdminEmbySyncRoute
+  '/api/admin/studio/$eventId': typeof ApiAdminStudioEventIdRouteWithChildren
   '/images/$season/$slug/$file': typeof ImagesSeasonSlugFileRoute
+  '/api/admin/studio/$eventId/approve': typeof ApiAdminStudioEventIdApproveRoute
+  '/api/admin/studio/$eventId/draft': typeof ApiAdminStudioEventIdDraftRoute
+  '/api/admin/studio/$eventId/generate': typeof ApiAdminStudioEventIdGenerateRoute
+  '/api/admin/studio/$eventId/upload': typeof ApiAdminStudioEventIdUploadRoute
   '/api/admin/emby/mappings/$eventId/$session': typeof ApiAdminEmbyMappingsEventIdSessionRoute
+  '/api/admin/studio/$eventId/versions/$versionId': typeof ApiAdminStudioEventIdVersionsVersionIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -196,8 +249,14 @@ export interface FileRoutesById {
   '/api/admin/emby/mappings': typeof ApiAdminEmbyMappingsRouteWithChildren
   '/api/admin/emby/shows': typeof ApiAdminEmbyShowsRoute
   '/api/admin/emby/sync': typeof ApiAdminEmbySyncRoute
+  '/api/admin/studio/$eventId': typeof ApiAdminStudioEventIdRouteWithChildren
   '/images/$season/$slug/$file': typeof ImagesSeasonSlugFileRoute
+  '/api/admin/studio/$eventId/approve': typeof ApiAdminStudioEventIdApproveRoute
+  '/api/admin/studio/$eventId/draft': typeof ApiAdminStudioEventIdDraftRoute
+  '/api/admin/studio/$eventId/generate': typeof ApiAdminStudioEventIdGenerateRoute
+  '/api/admin/studio/$eventId/upload': typeof ApiAdminStudioEventIdUploadRoute
   '/api/admin/emby/mappings/$eventId/$session': typeof ApiAdminEmbyMappingsEventIdSessionRoute
+  '/api/admin/studio/$eventId/versions/$versionId': typeof ApiAdminStudioEventIdVersionsVersionIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -220,8 +279,14 @@ export interface FileRouteTypes {
     | '/api/admin/emby/mappings'
     | '/api/admin/emby/shows'
     | '/api/admin/emby/sync'
+    | '/api/admin/studio/$eventId'
     | '/images/$season/$slug/$file'
+    | '/api/admin/studio/$eventId/approve'
+    | '/api/admin/studio/$eventId/draft'
+    | '/api/admin/studio/$eventId/generate'
+    | '/api/admin/studio/$eventId/upload'
     | '/api/admin/emby/mappings/$eventId/$session'
+    | '/api/admin/studio/$eventId/versions/$versionId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -242,8 +307,14 @@ export interface FileRouteTypes {
     | '/api/admin/emby/mappings'
     | '/api/admin/emby/shows'
     | '/api/admin/emby/sync'
+    | '/api/admin/studio/$eventId'
     | '/images/$season/$slug/$file'
+    | '/api/admin/studio/$eventId/approve'
+    | '/api/admin/studio/$eventId/draft'
+    | '/api/admin/studio/$eventId/generate'
+    | '/api/admin/studio/$eventId/upload'
     | '/api/admin/emby/mappings/$eventId/$session'
+    | '/api/admin/studio/$eventId/versions/$versionId'
   id:
     | '__root__'
     | '/'
@@ -264,8 +335,14 @@ export interface FileRouteTypes {
     | '/api/admin/emby/mappings'
     | '/api/admin/emby/shows'
     | '/api/admin/emby/sync'
+    | '/api/admin/studio/$eventId'
     | '/images/$season/$slug/$file'
+    | '/api/admin/studio/$eventId/approve'
+    | '/api/admin/studio/$eventId/draft'
+    | '/api/admin/studio/$eventId/generate'
+    | '/api/admin/studio/$eventId/upload'
     | '/api/admin/emby/mappings/$eventId/$session'
+    | '/api/admin/studio/$eventId/versions/$versionId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -287,6 +364,7 @@ export interface RootRouteChildren {
   ApiAdminEmbyMappingsRoute: typeof ApiAdminEmbyMappingsRouteWithChildren
   ApiAdminEmbyShowsRoute: typeof ApiAdminEmbyShowsRoute
   ApiAdminEmbySyncRoute: typeof ApiAdminEmbySyncRoute
+  ApiAdminStudioEventIdRoute: typeof ApiAdminStudioEventIdRouteWithChildren
   ImagesSeasonSlugFileRoute: typeof ImagesSeasonSlugFileRoute
 }
 
@@ -418,6 +496,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEmbySyncRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/studio/$eventId': {
+      id: '/api/admin/studio/$eventId'
+      path: '/api/admin/studio/$eventId'
+      fullPath: '/api/admin/studio/$eventId'
+      preLoaderRoute: typeof ApiAdminStudioEventIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/images/$season/$slug/$file': {
       id: '/images/$season/$slug/$file'
       path: '/images/$season/$slug/$file'
@@ -425,12 +510,47 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ImagesSeasonSlugFileRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/studio/$eventId/approve': {
+      id: '/api/admin/studio/$eventId/approve'
+      path: '/approve'
+      fullPath: '/api/admin/studio/$eventId/approve'
+      preLoaderRoute: typeof ApiAdminStudioEventIdApproveRouteImport
+      parentRoute: typeof ApiAdminStudioEventIdRoute
+    }
+    '/api/admin/studio/$eventId/draft': {
+      id: '/api/admin/studio/$eventId/draft'
+      path: '/draft'
+      fullPath: '/api/admin/studio/$eventId/draft'
+      preLoaderRoute: typeof ApiAdminStudioEventIdDraftRouteImport
+      parentRoute: typeof ApiAdminStudioEventIdRoute
+    }
+    '/api/admin/studio/$eventId/generate': {
+      id: '/api/admin/studio/$eventId/generate'
+      path: '/generate'
+      fullPath: '/api/admin/studio/$eventId/generate'
+      preLoaderRoute: typeof ApiAdminStudioEventIdGenerateRouteImport
+      parentRoute: typeof ApiAdminStudioEventIdRoute
+    }
+    '/api/admin/studio/$eventId/upload': {
+      id: '/api/admin/studio/$eventId/upload'
+      path: '/upload'
+      fullPath: '/api/admin/studio/$eventId/upload'
+      preLoaderRoute: typeof ApiAdminStudioEventIdUploadRouteImport
+      parentRoute: typeof ApiAdminStudioEventIdRoute
+    }
     '/api/admin/emby/mappings/$eventId/$session': {
       id: '/api/admin/emby/mappings/$eventId/$session'
       path: '/$eventId/$session'
       fullPath: '/api/admin/emby/mappings/$eventId/$session'
       preLoaderRoute: typeof ApiAdminEmbyMappingsEventIdSessionRouteImport
       parentRoute: typeof ApiAdminEmbyMappingsRoute
+    }
+    '/api/admin/studio/$eventId/versions/$versionId': {
+      id: '/api/admin/studio/$eventId/versions/$versionId'
+      path: '/versions/$versionId'
+      fullPath: '/api/admin/studio/$eventId/versions/$versionId'
+      preLoaderRoute: typeof ApiAdminStudioEventIdVersionsVersionIdRouteImport
+      parentRoute: typeof ApiAdminStudioEventIdRoute
     }
   }
 }
@@ -446,6 +566,28 @@ const ApiAdminEmbyMappingsRouteChildren: ApiAdminEmbyMappingsRouteChildren = {
 
 const ApiAdminEmbyMappingsRouteWithChildren =
   ApiAdminEmbyMappingsRoute._addFileChildren(ApiAdminEmbyMappingsRouteChildren)
+
+interface ApiAdminStudioEventIdRouteChildren {
+  ApiAdminStudioEventIdApproveRoute: typeof ApiAdminStudioEventIdApproveRoute
+  ApiAdminStudioEventIdDraftRoute: typeof ApiAdminStudioEventIdDraftRoute
+  ApiAdminStudioEventIdGenerateRoute: typeof ApiAdminStudioEventIdGenerateRoute
+  ApiAdminStudioEventIdUploadRoute: typeof ApiAdminStudioEventIdUploadRoute
+  ApiAdminStudioEventIdVersionsVersionIdRoute: typeof ApiAdminStudioEventIdVersionsVersionIdRoute
+}
+
+const ApiAdminStudioEventIdRouteChildren: ApiAdminStudioEventIdRouteChildren = {
+  ApiAdminStudioEventIdApproveRoute: ApiAdminStudioEventIdApproveRoute,
+  ApiAdminStudioEventIdDraftRoute: ApiAdminStudioEventIdDraftRoute,
+  ApiAdminStudioEventIdGenerateRoute: ApiAdminStudioEventIdGenerateRoute,
+  ApiAdminStudioEventIdUploadRoute: ApiAdminStudioEventIdUploadRoute,
+  ApiAdminStudioEventIdVersionsVersionIdRoute:
+    ApiAdminStudioEventIdVersionsVersionIdRoute,
+}
+
+const ApiAdminStudioEventIdRouteWithChildren =
+  ApiAdminStudioEventIdRoute._addFileChildren(
+    ApiAdminStudioEventIdRouteChildren,
+  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -466,6 +608,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminEmbyMappingsRoute: ApiAdminEmbyMappingsRouteWithChildren,
   ApiAdminEmbyShowsRoute: ApiAdminEmbyShowsRoute,
   ApiAdminEmbySyncRoute: ApiAdminEmbySyncRoute,
+  ApiAdminStudioEventIdRoute: ApiAdminStudioEventIdRouteWithChildren,
   ImagesSeasonSlugFileRoute: ImagesSeasonSlugFileRoute,
 }
 export const routeTree = rootRouteImport

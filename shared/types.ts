@@ -73,9 +73,87 @@ export interface ImageModel {
   parameters: Record<string, Capability>;
   route: "images" | "chat";
 }
+export const overlayElements = {
+  logo: "F1 logo",
+  title: "Venue title",
+  session: "Session label",
+  round: "Year and round",
+} as const;
+export type OverlayElement = keyof typeof overlayElements;
+// Linked colours apply to every session; unlinked ones may differ per session.
+export interface OverlayColour {
+  linked: boolean;
+  colour: string;
+  sessions: Partial<Record<SessionKey, string>>;
+}
+export type OverlayColours = Record<OverlayElement, OverlayColour>;
+export const resolveColour = (
+  colours: OverlayColours,
+  element: OverlayElement,
+  session: SessionKey,
+) => {
+  const setting = colours[element];
+  return setting.linked
+    ? setting.colour
+    : setting.sessions[session] || setting.colour;
+};
+export interface Glyph {
+  d: string;
+  transform: string;
+}
+export interface StudioVersion {
+  id: string;
+  number: number;
+  source: "current" | "generate" | "feedback" | "upload";
+  parentId: string | null;
+  feedback: string | null;
+  model: string | null;
+  createdAt: string;
+  live: boolean;
+  preview: string;
+  thumbnail: string;
+}
+export interface StudioState {
+  event: {
+    id: string;
+    season: number;
+    round: number;
+    name: string;
+    circuit: string;
+    locality: string;
+    country: string;
+    displayName: string;
+  };
+  sessions: SessionKey[];
+  versions: StudioVersion[];
+  draft: {
+    selectedVersionId: string | null;
+    colours: OverlayColours;
+    updatedAt: string;
+  } | null;
+  defaultColours: OverlayColours;
+  approvedColours: OverlayColours;
+  overlay: {
+    logo: {
+      svg: string;
+      fill: string;
+      x: number;
+      y: number;
+      width: number;
+      height: number;
+    };
+    title: Glyph[];
+    round: Glyph[];
+    sessions: Partial<Record<SessionKey, Glyph[]>>;
+  };
+  allowance: { used: number; limit: number };
+  generation: { ready: boolean; referenceImages: boolean; reason: string };
+  job: Job | null;
+}
+
 export interface Job {
   id: string;
-  kind: "generate" | "sync" | "emby";
+  kind: "generate" | "studio" | "sync" | "emby";
   eventId: string | null;
   status: "queued" | "running" | "completed" | "failed";
   message: string;

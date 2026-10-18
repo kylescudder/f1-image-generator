@@ -14,6 +14,8 @@ import { config } from "../server/config.ts";
 import { useServices } from "../server/services.ts";
 import { guardOverrides } from "../server/guard.ts";
 import { owner, library, health } from "../server/api.ts";
+import { studio } from "../server/studio.ts";
+import sharp from "sharp";
 
 // Never use the developer's application database or real integration credentials.
 const databaseUrl =
@@ -23,13 +25,23 @@ if (!new URL(databaseUrl).pathname.endsWith("_e2e_test"))
   throw new Error("E2E_DATABASE_URL must end in _e2e_test");
 const sql = new SQL(databaseUrl);
 await migrate(sql);
-await sql`TRUNCATE state, events, backgrounds, jobs, attempts, mappings`;
+await sql`TRUNCATE state, events, backgrounds, jobs, attempts, mappings, overlays, studio_versions, studio_drafts`;
 const store = await new Store(sql).open();
 await seedCalendars(store, process.cwd());
 await store.set("settings", {
   ...(await store.settings()),
   autoGenerate: false,
+  modelId: "fixture/image",
 });
+// The fake provider paints flat colours: the first request teal, then pink.
+const paints = [
+  { r: 20, g: 120, b: 120 },
+  { r: 230, g: 80, b: 170 },
+];
+const painted = (background: { r: number; g: number; b: number }) =>
+  sharp({ create: { width: 1920, height: 1080, channels: 3, background } })
+    .png()
+    .toBuffer();
 await mkdir(".local/emby-selection/data", { recursive: true });
 await cp("data/fonts", ".local/emby-selection/data/fonts", { recursive: true });
 const artwork = new Artwork(
@@ -37,22 +49,41 @@ const artwork = new Artwork(
   process.cwd(),
   path.resolve(".local/emby-selection/data"),
 );
-const router = new OpenRouter(store, "", "http://localhost:4318", (async (
-  _input,
-) =>
-  Response.json({
-    data: [
-      {
-        id: "fixture/image",
-        name: "Fixture image model",
-        architecture: {
-          input_modalities: ["text"],
-          output_modalities: ["image"],
+const router = new OpenRouter(
+  store,
+  "fixture-key",
+  "http://localhost:4318",
+  (async (input, init) => {
+    if (String(input).endsWith("/endpoints"))
+      return Response.json({
+        endpoints: [{ provider_tag: "fixture", supported_parameters: {} }],
+      });
+    if (init?.method === "POST")
+      return Response.json({
+        data: [
+          {
+            b64_json: (
+              await painted(paints.shift() ?? { r: 90, g: 90, b: 90 })
+            ).toString("base64"),
+            media_type: "image/png",
+          },
+        ],
+      });
+    return Response.json({
+      data: [
+        {
+          id: "fixture/image",
+          name: "Fixture image model",
+          architecture: {
+            input_modalities: ["text", "image"],
+            output_modalities: ["image"],
+          },
+          supported_parameters: {},
         },
-        supported_parameters: {},
-      },
-    ],
-  })) as typeof fetch);
+      ],
+    });
+  }) as typeof fetch,
+);
 const emby = new Emby(
   store,
   artwork,
@@ -118,7 +149,7 @@ useServices({
   artwork,
   router,
   emby,
-  jobs: new Jobs(store, artwork, router, emby, false, false, String),
+  jobs: new Jobs(store, artwork, router, emby, true, true, String),
   config,
 });
 guardOverrides.current = {
@@ -143,6 +174,32 @@ const handlers: Record<
   "/api/admin/emby/candidates": owner.embyCandidates,
   "/api/admin/emby/mappings": owner.saveMappings,
 };
+// Studio routes carry the weekend (and version) in the path.
+function studioRoute(pathname: string, method: string) {
+  const match =
+    /^\/api\/admin\/studio\/([^/]+)(?:\/(generate|upload|draft|approve|versions\/([^/]+)))?$/.exec(
+      pathname,
+    );
+  if (!match) return null;
+  const [, eventId, action, versionId] = match;
+  const handler = !action
+    ? studio.state
+    : action === "draft"
+      ? method === "DELETE"
+        ? studio.discardDraft
+        : studio.saveDraft
+      : versionId
+        ? studio.versionImage
+        : studio[action as "generate" | "upload" | "approve"];
+  return (request: Request) =>
+    handler({
+      request,
+      params: {
+        eventId: decodeURIComponent(eventId),
+        ...(versionId ? { versionId } : {}),
+      },
+    });
+}
 export default mergeConfig(
   base,
   defineConfig({
@@ -173,6 +230,7 @@ export default mergeConfig(
                 headers: incoming.headers as Record<string, string>,
                 ...(body.length ? { body } : {}),
               });
+              const dynamic = studioRoute(url.pathname, request.method);
               const handler = handlers[url.pathname];
               const response =
                 url.pathname === "/api/library"
@@ -181,12 +239,14 @@ export default mergeConfig(
                     ? health()
                     : handler
                       ? await handler({ request })
-                      : new Response(null, { status: 404 });
+                      : dynamic
+                        ? await dynamic(request)
+                        : new Response(null, { status: 404 });
               outgoing.writeHead(
                 response.status,
                 Object.fromEntries(response.headers),
               );
-              outgoing.end(await response.text());
+              outgoing.end(Buffer.from(await response.arrayBuffer()));
             } catch (error) {
               next(error);
             }
