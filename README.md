@@ -53,7 +53,7 @@ Original illustrations are raster, even inside Illustrator. SVG masters embed th
 
 ## Emby
 
-Set `EMBY_URL` (reachable from Herman) and an administrator `EMBY_API_KEY`. In **Owner workspace → Emby**, load libraries, choose/save F1, and inspect episodes. Review year/venue/session suggestions, save correct mappings, then use **Update Emby now**. Ambiguous matches need an explicit choice. Both seasons are available for mapping.
+Set `EMBY_URL` (reachable from Herman) and an administrator `EMBY_API_KEY`. In **Owner workspace → Emby**, load libraries, select a category (for example **TV shows**), then choose the **Formula 1** TV show. **Inspect episodes** saves this selection and scans only that show across its seasons. Dedicated F1 libraries can use **All episodes in this library**. Suggestions infer the year, venue and session from episode titles and folder/file names, without relying on round or episode numbers. Review the suggestions, save correct mappings, then use **Update Emby now**. Ambiguous matches need an explicit choice. Both seasons are available for mapping.
 
 Mappings use persistent event/session identities rather than round numbers. Paddock uploads base64 PNGs to Emby's Primary episode-image endpoint and remembers each rendered version. Failures stay visible and retryable; placeholders and cancelled sessions are not pushed over existing artwork. Keys remain environment-only.
 
@@ -68,6 +68,7 @@ State lives in PostgreSQL (`paddock`, via Herman's existing platform database). 
 - [Artwork audit](docs/artwork-audit.md): 48 Illustrator files, 126 artboards, 25 original backgrounds.
 - [Font sources](docs/font-sources.md); `assets/artwork.json` contains measured layouts and provenance.
 - `python3 scripts/import-archive.py --archive ~/Archive.zip` reproduces the import with checked-in measurements. Optional `--inspect-ai` rebuilds measurements using PyMuPDF.
+- `bun run test:e2e` runs the Emby selection/review/save journey in Chromium at desktop and mobile widths, including reload persistence and empty/error states. First run `bun run setup`, `bunx --no-install playwright install chromium`, and create `paddock_e2e_test` in the local PostgreSQL instance (or set `E2E_DATABASE_URL` to an isolated database ending in `_e2e_test`). The fixture resets that database, uses the real app and API handlers, and substitutes Clerk, Emby, and OpenRouter at their external boundaries; live integrations are not exercised. Reports and screenshots are saved in `.local/emby-selection/`.
 - `bun run test` checks authorization, limits, discovery, rendering, calendar reconciliation and Emby uploads with isolated test providers.
 - Deploy tests cover signature/timestamp/path/queue gates, the acknowledgement endpoint, provenance rejection, backup and migration failure, failed acceptance and rollback. CI also enforces Prettier formatting (`bun run format:check`).
 

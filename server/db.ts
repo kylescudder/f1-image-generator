@@ -33,14 +33,16 @@ export class Store {
       ON CONFLICT (key) DO UPDATE SET value=excluded.value`;
   }
   async settings(): Promise<AppSettings> {
-    return this.get("settings", {
+    return {
       modelId: "",
       monthlyGenerationLimit: 5,
       autoGenerate: true,
       resolution: "2K",
       quality: "high",
       embyLibraryId: "",
-    });
+      embySeriesId: "",
+      ...(await this.get<Partial<AppSettings>>("settings", {})),
+    };
   }
   async events(season?: number): Promise<RaceEvent[]> {
     const rows =

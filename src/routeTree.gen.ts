@@ -25,6 +25,7 @@ import { Route as ApiAdminSyncRouteImport } from './routes/api/admin/sync'
 import { Route as ApiAdminEmbyCandidatesRouteImport } from './routes/api/admin/emby/candidates'
 import { Route as ApiAdminEmbyLibrariesRouteImport } from './routes/api/admin/emby/libraries'
 import { Route as ApiAdminEmbyMappingsRouteImport } from './routes/api/admin/emby/mappings'
+import { Route as ApiAdminEmbyShowsRouteImport } from './routes/api/admin/emby/shows'
 import { Route as ApiAdminEmbySyncRouteImport } from './routes/api/admin/emby/sync'
 import { Route as ImagesSeasonSlugFileRouteImport } from './routes/images/$season/$slug/$file'
 import { Route as ApiAdminEmbyMappingsEventIdSessionRouteImport } from './routes/api/admin/emby/mappings/$eventId/$session'
@@ -109,6 +110,11 @@ const ApiAdminEmbyMappingsRoute = ApiAdminEmbyMappingsRouteImport.update({
   path: '/api/admin/emby/mappings',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiAdminEmbyShowsRoute = ApiAdminEmbyShowsRouteImport.update({
+  id: '/api/admin/emby/shows',
+  path: '/api/admin/emby/shows',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiAdminEmbySyncRoute = ApiAdminEmbySyncRouteImport.update({
   id: '/api/admin/emby/sync',
   path: '/api/admin/emby/sync',
@@ -143,6 +149,7 @@ export interface FileRoutesByFullPath {
   '/api/admin/emby/candidates': typeof ApiAdminEmbyCandidatesRoute
   '/api/admin/emby/libraries': typeof ApiAdminEmbyLibrariesRoute
   '/api/admin/emby/mappings': typeof ApiAdminEmbyMappingsRouteWithChildren
+  '/api/admin/emby/shows': typeof ApiAdminEmbyShowsRoute
   '/api/admin/emby/sync': typeof ApiAdminEmbySyncRoute
   '/images/$season/$slug/$file': typeof ImagesSeasonSlugFileRoute
   '/api/admin/emby/mappings/$eventId/$session': typeof ApiAdminEmbyMappingsEventIdSessionRoute
@@ -164,6 +171,7 @@ export interface FileRoutesByTo {
   '/api/admin/emby/candidates': typeof ApiAdminEmbyCandidatesRoute
   '/api/admin/emby/libraries': typeof ApiAdminEmbyLibrariesRoute
   '/api/admin/emby/mappings': typeof ApiAdminEmbyMappingsRouteWithChildren
+  '/api/admin/emby/shows': typeof ApiAdminEmbyShowsRoute
   '/api/admin/emby/sync': typeof ApiAdminEmbySyncRoute
   '/images/$season/$slug/$file': typeof ImagesSeasonSlugFileRoute
   '/api/admin/emby/mappings/$eventId/$session': typeof ApiAdminEmbyMappingsEventIdSessionRoute
@@ -186,6 +194,7 @@ export interface FileRoutesById {
   '/api/admin/emby/candidates': typeof ApiAdminEmbyCandidatesRoute
   '/api/admin/emby/libraries': typeof ApiAdminEmbyLibrariesRoute
   '/api/admin/emby/mappings': typeof ApiAdminEmbyMappingsRouteWithChildren
+  '/api/admin/emby/shows': typeof ApiAdminEmbyShowsRoute
   '/api/admin/emby/sync': typeof ApiAdminEmbySyncRoute
   '/images/$season/$slug/$file': typeof ImagesSeasonSlugFileRoute
   '/api/admin/emby/mappings/$eventId/$session': typeof ApiAdminEmbyMappingsEventIdSessionRoute
@@ -209,6 +218,7 @@ export interface FileRouteTypes {
     | '/api/admin/emby/candidates'
     | '/api/admin/emby/libraries'
     | '/api/admin/emby/mappings'
+    | '/api/admin/emby/shows'
     | '/api/admin/emby/sync'
     | '/images/$season/$slug/$file'
     | '/api/admin/emby/mappings/$eventId/$session'
@@ -230,6 +240,7 @@ export interface FileRouteTypes {
     | '/api/admin/emby/candidates'
     | '/api/admin/emby/libraries'
     | '/api/admin/emby/mappings'
+    | '/api/admin/emby/shows'
     | '/api/admin/emby/sync'
     | '/images/$season/$slug/$file'
     | '/api/admin/emby/mappings/$eventId/$session'
@@ -251,6 +262,7 @@ export interface FileRouteTypes {
     | '/api/admin/emby/candidates'
     | '/api/admin/emby/libraries'
     | '/api/admin/emby/mappings'
+    | '/api/admin/emby/shows'
     | '/api/admin/emby/sync'
     | '/images/$season/$slug/$file'
     | '/api/admin/emby/mappings/$eventId/$session'
@@ -273,6 +285,7 @@ export interface RootRouteChildren {
   ApiAdminEmbyCandidatesRoute: typeof ApiAdminEmbyCandidatesRoute
   ApiAdminEmbyLibrariesRoute: typeof ApiAdminEmbyLibrariesRoute
   ApiAdminEmbyMappingsRoute: typeof ApiAdminEmbyMappingsRouteWithChildren
+  ApiAdminEmbyShowsRoute: typeof ApiAdminEmbyShowsRoute
   ApiAdminEmbySyncRoute: typeof ApiAdminEmbySyncRoute
   ImagesSeasonSlugFileRoute: typeof ImagesSeasonSlugFileRoute
 }
@@ -391,6 +404,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAdminEmbyMappingsRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/admin/emby/shows': {
+      id: '/api/admin/emby/shows'
+      path: '/api/admin/emby/shows'
+      fullPath: '/api/admin/emby/shows'
+      preLoaderRoute: typeof ApiAdminEmbyShowsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/admin/emby/sync': {
       id: '/api/admin/emby/sync'
       path: '/api/admin/emby/sync'
@@ -444,6 +464,7 @@ const rootRouteChildren: RootRouteChildren = {
   ApiAdminEmbyCandidatesRoute: ApiAdminEmbyCandidatesRoute,
   ApiAdminEmbyLibrariesRoute: ApiAdminEmbyLibrariesRoute,
   ApiAdminEmbyMappingsRoute: ApiAdminEmbyMappingsRouteWithChildren,
+  ApiAdminEmbyShowsRoute: ApiAdminEmbyShowsRoute,
   ApiAdminEmbySyncRoute: ApiAdminEmbySyncRoute,
   ImagesSeasonSlugFileRoute: ImagesSeasonSlugFileRoute,
 }

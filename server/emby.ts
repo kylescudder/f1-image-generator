@@ -1,4 +1,9 @@
-import type { EmbyCandidate, RaceEvent, SessionKey } from "../shared/types.ts";
+import type {
+  EmbyCandidate,
+  EmbyShow,
+  RaceEvent,
+  SessionKey,
+} from "../shared/types.ts";
 import { sessionKeys } from "../shared/types.ts";
 import { Artwork } from "./artwork.ts";
 import { Store } from "./db.ts";
@@ -41,10 +46,11 @@ const aliases: Record<string, string[]> = {
   lusail: ["qatar", "lusail", "losail"],
   "yas-marina": ["abu dhabi", "yas marina"],
 };
+const excludedSessions =
+  /\b(practice|fp ?[123]|highlights|notebook|preview|review)\b/;
 export function inferSession(text: string): SessionKey | null {
   const name = normalize(text);
-  if (/\b(practice|fp[123]|highlights|notebook|preview|review)\b/.test(name))
-    return null;
+  if (excludedSessions.test(name)) return null;
   if (
     (/\bsprint\b/.test(name) &&
       /\b(qualifying|qualification|quali|qual|shootout)\b/.test(name)) ||
@@ -58,15 +64,38 @@ export function inferSession(text: string): SessionKey | null {
   return null;
 }
 export function matchItem(item: EmbyItem, events: RaceEvent[]): EmbyCandidate {
-  const text = normalize(`${item.Name} ${item.Path || ""}`);
-  const extractedYear = /\b(20\d{2})\b/.exec(text)?.[1];
+  // Read the file and its nearest folders first, before a show's debut year.
+  const pathParts = (item.Path || "").split(/[\\/]/).filter(Boolean).reverse();
+  const parts = [item.Name, ...pathParts];
+  const text = normalize(parts.join(" "));
+  const extractedYear = parts
+    .map((part) => /(?<!\d)(20\d{2})(?!\d)/.exec(part)?.[1])
+    .find(Boolean);
   const year = extractedYear
     ? Number(extractedYear)
     : item.ParentIndexNumber && item.ParentIndexNumber >= 1950
       ? item.ParentIndexNumber
       : item.ProductionYear;
-  const session =
-    inferSession(item.Name) || inferSession(item.Path?.split("/").pop() || "");
+  // Only session folders next to the file can exclude an episode. Stop at
+  // the first venue, season, show or other directory so storage paths such
+  // as /srv/review never suppress an otherwise valid match.
+  const episodeParts = [item.Name, pathParts[0] || ""];
+  for (const folder of pathParts.slice(1)) {
+    if (!inferSession(folder) && !excludedSessions.test(normalize(folder)))
+      break;
+    episodeParts.push(folder);
+  }
+  const excluded = episodeParts.some((part) =>
+    excludedSessions.test(normalize(part)),
+  );
+  // "Grand Prix" alone names the weekend; an explicit session in a file or
+  // folder is stronger evidence than that generic episode title.
+  const explicitSessions = parts.map((part) =>
+    inferSession(normalize(part).replace(/\bgrand prix\b/g, "")),
+  );
+  const session = excluded
+    ? null
+    : explicitSessions.find(Boolean) || parts.map(inferSession).find(Boolean);
   const candidates = session
     ? events
         .filter(
@@ -154,16 +183,43 @@ export class Emby {
       }))
       .filter((item) => item.id);
   }
+  async shows(libraryId: string): Promise<EmbyShow[]> {
+    const items = await this.items(libraryId, "Series");
+    return items.map((item) => ({
+      id: item.Id,
+      name: item.Name,
+      path: item.Path,
+    }));
+  }
   async candidates(): Promise<EmbyCandidate[]> {
-    const library = (await this.store.settings()).embyLibraryId;
-    if (!library)
+    const { embyLibraryId, embySeriesId } = await this.store.settings();
+    if (!embyLibraryId)
       throw new Error("Choose your F1 library before inspecting episodes.");
+    if (
+      embySeriesId &&
+      !(await this.shows(embyLibraryId)).some(
+        (show) => show.id === embySeriesId,
+      )
+    )
+      throw new Error(
+        "The selected TV show is no longer in this library. Load the shows and choose again.",
+      );
+    const items = await this.items(embySeriesId || embyLibraryId, "Episode");
+    const events = await this.store.events();
+    return items.map((item) => matchItem(item, events));
+  }
+  private async items(
+    parentId: string,
+    type: "Series" | "Episode",
+  ): Promise<EmbyItem[]> {
     const items: EmbyItem[] = [];
     for (let start = 0; start < 10000; start += 200) {
       const params = new URLSearchParams({
-        ParentId: library,
+        ParentId: parentId,
         Recursive: "true",
-        IncludeItemTypes: "Episode",
+        IncludeItemTypes: type,
+        SortBy: "SortName",
+        SortOrder: "Ascending",
         Fields: "Path,ParentId",
         StartIndex: String(start),
         Limit: "200",
@@ -173,7 +229,9 @@ export class Emby {
         TotalRecordCount?: number;
       };
       if (!Array.isArray(data.Items))
-        throw new Error("Emby returned an invalid episode response.");
+        throw new Error(
+          `Emby returned an invalid ${type === "Series" ? "TV show" : "episode"} response.`,
+        );
       items.push(...data.Items);
       if (
         data.Items.length < 200 ||
@@ -181,8 +239,7 @@ export class Emby {
       )
         break;
     }
-    const events = await this.store.events();
-    return items.map((item) => matchItem(item, events));
+    return items;
   }
   async sync(): Promise<string> {
     if (!this.configured) return "Emby is not connected yet.";

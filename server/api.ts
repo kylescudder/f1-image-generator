@@ -86,6 +86,7 @@ const settingsSchema = z
     resolution: z.string().max(40),
     quality: z.string().max(40),
     embyLibraryId: z.string().max(100),
+    embySeriesId: z.string().max(100).default(""),
   })
   .strict();
 const mappingsSchema = z
@@ -160,6 +161,14 @@ export const owner = {
   embyLibraries: admin(async (_request, { services: { emby } }) =>
     Response.json(await emby.libraries()),
   ),
+  embyShows: admin(async (request, { services: { emby } }) => {
+    const libraryId = z
+      .string()
+      .min(1)
+      .max(100)
+      .parse(new URL(request.url).searchParams.get("libraryId"));
+    return Response.json(await emby.shows(libraryId));
+  }),
   embyCandidates: admin(async (_request, { services: { emby } }) =>
     Response.json(await emby.candidates()),
   ),

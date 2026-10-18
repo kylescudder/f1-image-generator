@@ -38,6 +38,7 @@ import {
   type AdminStatus,
   type AppSettings,
   type EmbyCandidate,
+  type EmbyShow,
   type ImageModel,
   type LibraryEvent,
   type PublicLibrary,
@@ -884,6 +885,11 @@ function Admin({ notify }: { notify: (text: string) => void }) {
   const [libraries, setLibraries] = useState<{ id: string; name: string }[]>(
     [],
   );
+  const [shows, setShows] = useState<EmbyShow[]>([]);
+  const [showsLoading, setShowsLoading] = useState(false);
+  const [showsLibrary, setShowsLibrary] = useState("");
+  const [showsRefresh, setShowsRefresh] = useState(0);
+  const [inspected, setInspected] = useState(false);
   const [candidates, setCandidates] = useState<EmbyCandidate[]>([]);
   const [episodeSearch, setEpisodeSearch] = useState("");
   const reload = async () => {
@@ -938,6 +944,32 @@ function Admin({ notify }: { notify: (text: string) => void }) {
     }, 5000);
     return () => clearInterval(timer);
   }, []);
+  useEffect(() => {
+    const libraryId = settings?.embyLibraryId;
+    if (tab !== "emby" || !libraryId || !status?.configured.emby) return;
+    let cancelled = false;
+    setShowsLoading(true);
+    setShowsLibrary("");
+    setShows([]);
+    request<EmbyShow[]>(
+      `/api/admin/emby/shows?libraryId=${encodeURIComponent(libraryId)}`,
+    )
+      .then((result) => {
+        if (!cancelled) {
+          setShows(result);
+          setShowsLibrary(libraryId);
+        }
+      })
+      .catch((error) => {
+        if (!cancelled) setError(errorMessage(error));
+      })
+      .finally(() => {
+        if (!cancelled) setShowsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [settings?.embyLibraryId, status?.configured.emby, tab, showsRefresh]);
   if (!settings || !status)
     return (
       <div className="library-loading">
@@ -1385,9 +1417,10 @@ function Admin({ notify }: { notify: (text: string) => void }) {
               className="button secondary"
               disabled={Boolean(busy) || !status.configured.emby}
               onClick={() =>
-                void act("libraries", async () =>
-                  setLibraries(await request("/api/admin/emby/libraries")),
-                )
+                void act("libraries", async () => {
+                  setLibraries(await request("/api/admin/emby/libraries"));
+                  setShowsRefresh((value) => value + 1);
+                })
               }
             >
               <RefreshCw size={14} />
@@ -1413,12 +1446,23 @@ function Admin({ notify }: { notify: (text: string) => void }) {
             </button>
           </div>
           <label className="field">
-            Formula 1 library
+            Emby library
             <select
+              aria-label="Emby library"
               value={settings.embyLibraryId}
-              onChange={(event) => update("embyLibraryId", event.target.value)}
+              disabled={Boolean(busy)}
+              onChange={(event) => {
+                setSettings({
+                  ...settings,
+                  embyLibraryId: event.target.value,
+                  embySeriesId: "",
+                });
+                setCandidates([]);
+                setInspected(false);
+                setEpisodeSearch("");
+              }}
             >
-              <option value="">Select your F1 library</option>
+              <option value="">Select a library</option>
               {settings.embyLibraryId &&
                 !libraries.some(
                   (library) => library.id === settings.embyLibraryId,
@@ -1434,30 +1478,98 @@ function Admin({ notify }: { notify: (text: string) => void }) {
               ))}
             </select>
           </label>
+          {settings.embyLibraryId && (
+            <>
+              <label className="field">
+                TV show
+                <select
+                  aria-label="TV show"
+                  value={settings.embySeriesId}
+                  disabled={
+                    Boolean(busy) ||
+                    showsLoading ||
+                    showsLibrary !== settings.embyLibraryId
+                  }
+                  onChange={(event) => {
+                    update("embySeriesId", event.target.value);
+                    setCandidates([]);
+                    setInspected(false);
+                    setEpisodeSearch("");
+                  }}
+                >
+                  <option value="">
+                    {showsLoading
+                      ? "Loading TV shows…"
+                      : "All episodes in this library"}
+                  </option>
+                  {settings.embySeriesId &&
+                    !shows.some(
+                      (show) => show.id === settings.embySeriesId,
+                    ) && (
+                      <option value={settings.embySeriesId}>
+                        {settings.embySeriesId}
+                      </option>
+                    )}
+                  {shows.map((show) => (
+                    <option key={show.id} value={show.id}>
+                      {show.name}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <p className="field-hint">
+                Choose Formula 1 to inspect only that show's episodes across all
+                seasons.
+                {showsLibrary === settings.embyLibraryId &&
+                  !shows.length &&
+                  " No TV shows were found; you can inspect the library directly."}
+              </p>
+            </>
+          )}
           <div className="button-row">
             <button
               className="button secondary"
-              disabled={Boolean(busy) || !settings.embyLibraryId}
+              disabled={
+                Boolean(busy) ||
+                showsLoading ||
+                showsLibrary !== settings.embyLibraryId ||
+                !settings.embyLibraryId
+              }
               onClick={() =>
-                void act("save-library", save, "Emby library saved.")
+                void act("save-library", save, "Emby selection saved.")
               }
             >
               <Check size={14} />
-              Save library
+              Save selection
             </button>
             <button
               className="button secondary"
-              disabled={Boolean(busy) || !status.settings.embyLibraryId}
+              disabled={
+                Boolean(busy) ||
+                showsLoading ||
+                showsLibrary !== settings.embyLibraryId ||
+                !settings.embyLibraryId
+              }
               onClick={() =>
-                void act("inspect", async () =>
-                  setCandidates(await request("/api/admin/emby/candidates")),
-                )
+                void act("inspect", async () => {
+                  setCandidates([]);
+                  setInspected(false);
+                  await save();
+                  setCandidates(await request("/api/admin/emby/candidates"));
+                  setInspected(true);
+                })
               }
             >
               <Search size={14} />
               Inspect episodes
             </button>
           </div>
+          {inspected && candidates.length === 0 && (
+            <p className="field-hint" role="status">
+              No episodes found in this selection. Choose another TV show or
+              library.
+            </p>
+          )}
           {candidates.length > 0 && (
             <>
               <div className="settings-divider" />
@@ -1465,8 +1577,9 @@ function Admin({ notify }: { notify: (text: string) => void }) {
                 <div>
                   <h2>Review suggestions</h2>
                   <p>
-                    Matches use the year, venue and session, independently of
-                    round numbers.
+                    Best guesses use episode titles, folder and file names for
+                    the year, venue and session. Review them before saving;
+                    ambiguous matches need a manual choice.
                   </p>
                 </div>
                 <button
