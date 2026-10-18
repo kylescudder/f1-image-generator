@@ -172,7 +172,7 @@ def migrate(candidate):
          f'type=bind,src={password},dst=/run/secrets/database_password,readonly',
          '--env', 'DATABASE_URL=postgres://paddock_owner@postgres:5432/paddock',
          '--env', 'DATABASE_PASSWORD_FILE=/run/secrets/database_password',
-         candidate, 'bun', 'server/migrate.ts'], timeout=120)
+         '--entrypoint', 'bun', candidate, '/app/server/migrate.ts'], timeout=120)
 
 
 def deploy(digest, requested_revision=None):
@@ -180,7 +180,7 @@ def deploy(digest, requested_revision=None):
         raise Error('Use an exact sha256 digest.')
     runtime = private_env(APP / '.env')
     candidate = f'{IMAGE}@{digest}'
-    ids = compose('ps', '-a', '-q', 'web').decode().strip().splitlines()
+    ids = compose('ps', '-a', '-q', 'web', image=candidate).decode().strip().splitlines()
     if len(ids) > 1:
         raise Error('Expected a single Paddock container.')
     current = inspect_current(ids[0]) if ids else None
