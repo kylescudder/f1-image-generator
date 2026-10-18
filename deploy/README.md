@@ -11,7 +11,7 @@ Run on **Herman**, from a reviewed checkout. Forge currently cannot authenticate
 
 ```sh
 mkdir -p /Users/kyle/platform/apps
-git clone git@github.com:kylescudder/f1-image-generator.git /Users/kyle/platform/apps/paddock
+git clone git@github.com:kylescudder/paddock.git /Users/kyle/platform/apps/paddock
 cd /Users/kyle/platform/apps/paddock
 python3 -B deploy/bootstrap-herman.py
 ```
@@ -43,9 +43,9 @@ For this user-owned private repository, the official `@actions/attest` toolkit s
 Once the receiver/Access routes and three production secrets exist:
 
 ```sh
-gh variable set PADDOCK_BASE_URL --body https://paddock.thescudders.org --repo kylescudder/f1-image-generator
-gh variable set DEPLOY_ENABLED --body true --repo kylescudder/f1-image-generator
-gh workflow run Release --ref main --repo kylescudder/f1-image-generator
+gh variable set PADDOCK_BASE_URL --body https://paddock.thescudders.org --repo kylescudder/paddock
+gh variable set DEPLOY_ENABLED --body true --repo kylescudder/paddock
+gh workflow run Release --ref main --repo kylescudder/paddock
 ```
 
 Release checks that Access blocks anonymous callers, unrelated hook paths return 404, and invalid HMAC signatures are rejected by the receiver. It then queues the exact digest and waits for two things: Herman's acknowledgement (an authenticated `GET` of the hook, returning `status: deployed` with the exact revision and image) and the public `X-Paddock-Revision` header equalling that commit. Herman verifies the repository, workflow, `refs/heads/main`, GitHub-hosted runner provenance, and requested revision independently before pulling.
@@ -68,4 +68,4 @@ tail -n 100 state/deploy.log
 ./deploy/herman-deploy.sh sha256:<previous-attested-main-digest>
 ```
 
-Host `deploy/` and Compose changes require updating the reviewed host checkout and recreating the receiver/reinstalling the LaunchAgent when relevant; routine app releases run only the independently verified image. Pause releases with `gh variable set DEPLOY_ENABLED --body false --repo kylescudder/f1-image-generator`.
+Host `deploy/` and Compose changes require updating the reviewed host checkout and recreating the receiver/reinstalling the LaunchAgent when relevant; routine app releases run only the independently verified image. Pause releases with `gh variable set DEPLOY_ENABLED --body false --repo kylescudder/paddock`.

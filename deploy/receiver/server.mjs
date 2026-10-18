@@ -71,9 +71,7 @@ createServer((request, response) => {
       const value = JSON.parse(readFileSync(deployedStateFile, "utf8"));
       if (
         /^[0-9a-f]{40}$/.test(value.revision) &&
-        /^ghcr\.io\/kylescudder\/f1-image-generator@sha256:[0-9a-f]{64}$/.test(
-          value.image,
-        )
+        /^ghcr\.io\/kylescudder\/paddock@sha256:[0-9a-f]{64}$/.test(value.image)
       )
         status = {
           status: "deployed",
