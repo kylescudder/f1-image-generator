@@ -6,9 +6,21 @@ test.beforeEach(async ({ page }) => {
   await page.route(
     "https://clerk.paddock.thescudders.org/v1/client**",
     (route) => {
+      const headers = {
+        "access-control-allow-origin": "http://localhost:4321",
+        "access-control-allow-credentials": "true",
+        "access-control-allow-methods": "GET, POST, OPTIONS",
+        "access-control-allow-headers":
+          route.request().headers()["access-control-request-headers"] ||
+          "content-type",
+        vary: "Origin",
+      };
+      if (route.request().method() === "OPTIONS")
+        return route.fulfill({ status: 204, headers });
       if (route.request().method() !== "GET")
         return route.fulfill({
           status: 422,
+          headers,
           json: {
             errors: [
               {
@@ -21,6 +33,7 @@ test.beforeEach(async ({ page }) => {
           },
         });
       return route.fulfill({
+        headers,
         json: {
           response: {
             object: "client",
@@ -37,6 +50,57 @@ test.beforeEach(async ({ page }) => {
       });
     },
   );
+});
+
+test("Clerk fixture supports credentialed CORS requests and preflight", async ({
+  page,
+}) => {
+  await page.goto("/admin");
+  await expect(
+    page.getByRole("textbox", { name: "Email address", exact: true }),
+  ).toBeVisible({ timeout: 30000 });
+
+  for (const method of ["OPTIONS", "GET", "POST"]) {
+    const responsePromise = page.waitForResponse(
+      (response) =>
+        response.url().includes("cors-check") &&
+        response.request().method() === method,
+    );
+    const result = await page.evaluate(async (method) => {
+      const response = await fetch(
+        "https://clerk.paddock.thescudders.org/v1/client?cors-check",
+        {
+          method,
+          credentials: "include",
+          ...(method === "POST"
+            ? {
+                headers: { "content-type": "application/json" },
+                body: JSON.stringify({ identifier: "unknown@example.invalid" }),
+              }
+            : {}),
+        },
+      );
+      return {
+        status: response.status,
+        body:
+          method === "OPTIONS" ? await response.text() : await response.json(),
+      };
+    }, method);
+    const headers = await (await responsePromise).allHeaders();
+    expect(headers["access-control-allow-origin"]).toBe(
+      "http://localhost:4321",
+    );
+    expect(headers["access-control-allow-credentials"]).toBe("true");
+    expect(headers["access-control-allow-methods"]).toBe("GET, POST, OPTIONS");
+    expect(headers["access-control-allow-headers"]).toContain("content-type");
+    expect(result.status).toBe(
+      method === "OPTIONS" ? 204 : method === "GET" ? 200 : 422,
+    );
+    if (method === "OPTIONS") expect(result.body).toBe("");
+    else if (method === "GET")
+      expect(result.body.response.sessions).toEqual([]);
+    else expect(result.body.errors[0].code).toBe("form_identifier_not_found");
+  }
 });
 
 for (const viewport of [
