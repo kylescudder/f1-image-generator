@@ -43,8 +43,8 @@ def main():
     with secret.open('rb') as stream:
         subprocess.run(['gh', 'secret', 'set', 'DEPLOY_WEBHOOK_SECRET', '--repo', 'kylescudder/paddock', '--env', 'production'], stdin=stream, check=True)
     subprocess.run(['docker', 'compose', '-f', 'deploy/compose.deploy-hook.yaml', '--env-file', '.env.deploy-hook', 'up', '-d', '--wait'], cwd=APP, check=True)
-    subprocess.run(['python3', '-B', 'deploy/host-deploy.py', '--install', host], cwd=APP, check=True)
-    print('Host receiver, protected runtime template, signing secret, and LaunchAgent are prepared.')
+    print('Register this app in /Users/kyle/platform/deploy-core/apps.json before enabling releases.')
+    print('Host receiver, protected runtime template, and signing secret are prepared.')
     print('Complete the Cloudflare Access/hostname steps in deploy/README.md before enabling DEPLOY_ENABLED.')
 
 if __name__ == '__main__':

@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Paddock settings and hooks for the shared host deployer (deploy_core.py)."""
+"""Paddock application-owned hooks for the installed deployment service."""
 from pathlib import Path
 
 import deploy_core as core
@@ -31,18 +31,3 @@ def prepare(candidate, current):
     core.backup_database(NAME)
     migrate(candidate)
     core.log('owner migrations applied; runtime remains restricted')
-
-
-APP = core.App(
-    name='paddock', title='Paddock',
-    image='ghcr.io/kylescudder/paddock', repo='kylescudder/paddock',
-    image_var='PADDOCK_IMAGE', service='web', app_dir=Path(__file__).resolve().parents[1],
-    health=health,
-    accept=accept,
-    prepare=prepare,
-    public_status=True,
-    backups=True,
-    bind_source_digest=True)
-
-if __name__ == '__main__':
-    core.cli(APP, __file__)
