@@ -136,11 +136,25 @@ def publish_status(image, revision):
     save_json(directory / 'deployment.json', {'revision':revision, 'image':image})
 
 
+def parse_json(raw, what):
+    try:
+        return json.loads(raw)
+    except ValueError:
+        # Never echo the data: it may contain container logs or credentials.
+        raise Error(f'{what} returned unexpected output.') from None
+
+
 def inspect_current(container):
-    raw = run(['docker', 'inspect', '--format',
-               '{{json .Config.Image}}|{{json .State}}|{{json .Config.Labels}}', container])
-    image, state, labels = [json.loads(part) for part in raw.decode().strip().split('|', 2)]
-    return {'Config': {'Image': image, 'Labels': labels}, 'State': state}
+    # Parse the whole document rather than a delimited --format string: health check
+    # logs from a failed candidate contain arbitrary text, including '|' and newlines.
+    # Keep only the fields the deployer uses so nothing else is carried around.
+    info = parse_json(run(['docker', 'inspect', container]), 'docker inspect')[0]
+    state = info.get('State') or {}
+    health = state.get('Health') or {}
+    return {'Config': {'Image': (info.get('Config') or {}).get('Image'),
+                       'Labels': (info.get('Config') or {}).get('Labels') or {}},
+            'State': {'Running': bool(state.get('Running')), 'Status': state.get('Status'),
+                      'Health': {'Status': health.get('Status')}}}
 
 
 def backup_database():
@@ -184,7 +198,9 @@ def deploy(digest, requested_revision=None):
     if len(ids) > 1:
         raise Error('Expected a single Paddock container.')
     current = inspect_current(ids[0]) if ids else None
-    running = current['Config']['Image'] if current else None
+    # A stopped container, such as a failed first candidate, is neither the previous
+    # release to roll back to nor an already-healthy deployment.
+    running = current['Config']['Image'] if current and current['State'].get('Running') else None
     if running == candidate and current['State'].get('Health', {}).get('Status') == 'healthy':
         revision = (current['Config'].get('Labels') or {}).get('org.opencontainers.image.revision', '')
         if not REVISION.fullmatch(revision) or requested_revision and requested_revision != revision:
@@ -202,7 +218,8 @@ def deploy(digest, requested_revision=None):
         attestation.extend(['--source-digest', requested_revision])
     run(attestation, timeout=180)
     run(['docker', 'pull', '--quiet', candidate], timeout=300)
-    labels = json.loads(run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate])) or {}
+    labels = parse_json(run(['docker', 'image', 'inspect', '--format', '{{json .Config.Labels}}', candidate]),
+                        'docker image inspect') or {}
     revision = labels.get('org.opencontainers.image.revision', '')
     if not REVISION.fullmatch(revision) or requested_revision and requested_revision != revision:
         raise Error('Verified image revision does not match the request.')

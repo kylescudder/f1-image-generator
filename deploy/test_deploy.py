@@ -15,6 +15,11 @@ D = 'sha256:' + 'a' * 64
 R = 'b' * 40
 
 
+def docker_inspect(image, state, labels=None):
+    # Shaped like `docker inspect <container>`: a one-element array of the full document.
+    return json.dumps([{'Id':'container','Config':{'Image':image,'Labels':labels,'Env':['UNUSED=1']},'State':state}]).encode()
+
+
 class Deploy(unittest.TestCase):
     def setUp(self):
         self.temp = tempfile.TemporaryDirectory()
@@ -76,7 +81,7 @@ class Deploy(unittest.TestCase):
     def test_healthy_same_digest_requires_the_requested_revision(self):
         current={'Config':{'Image':module.IMAGE+'@'+D,'Labels':{'org.opencontainers.image.revision':R}},
                  'State':{'Running':True,'Health':{'Status':'healthy'}}}
-        raw = '|'.join(json.dumps(v) for v in [current['Config']['Image'],current['State'],current['Config']['Labels']]).encode()
+        raw = docker_inspect(current['Config']['Image'],current['State'],current['Config']['Labels'])
         with patch.object(module,'run',return_value=raw),patch.object(module,'compose',self.fake_compose),patch.object(module,'start') as start:
             with self.assertRaises(module.Error):module.deploy(D,'c'*40)
             module.deploy(D,R)
@@ -85,7 +90,7 @@ class Deploy(unittest.TestCase):
     def fake_run(self, args, **kwargs):
         self.calls.append(args)
         if args[:2]==['docker','inspect']:
-            return '|'.join(json.dumps(v) for v in ['previous',{'Running':True,'Health':{'Status':'healthy'}},{}]).encode()
+            return docker_inspect('previous',{'Running':True,'Health':{'Status':'healthy'}},{})
         if args[:3]==['docker','image','inspect']:
             return json.dumps({'org.opencontainers.image.revision':R}).encode()
         return b''
@@ -190,6 +195,39 @@ class Deploy(unittest.TestCase):
             raise module.Error('stop after the first call')
         with patch.object(module,'compose',compose),self.assertRaises(module.Error):module.deploy(D,R)
         self.assertEqual(calls[0],(('ps','-a','-q','web'),module.IMAGE+'@'+D))
+
+    def test_inspect_survives_pipes_and_newlines_in_a_failed_health_log(self):
+        log=[{'ExitCode':1,'Output':'error: boom\n3 | for (const path of paths) {\n  ^\n'},{'ExitCode':1,'Output':'a|b|c\n|\n'}]
+        raw=docker_inspect(module.IMAGE+'@'+D,{'Status':'exited','Running':False,'Health':{'Status':'unhealthy','Log':log}},
+                           {'org.opencontainers.image.revision':R})
+        with patch.object(module,'run',return_value=raw):current=module.inspect_current('container')
+        self.assertEqual(current,{'Config':{'Image':module.IMAGE+'@'+D,'Labels':{'org.opencontainers.image.revision':R}},
+                                  'State':{'Running':False,'Status':'exited','Health':{'Status':'unhealthy'}}})
+
+    def test_unparseable_inspect_output_is_reported_without_echoing_it(self):
+        with patch.object(module,'run',return_value=b'3 | secret-looking text'):
+            with self.assertRaises(module.Error) as caught:module.inspect_current('container')
+        self.assertNotIn('secret',str(caught.exception))
+
+    def test_stopped_failed_candidate_is_replaced_and_never_restored(self):
+        log=[{'ExitCode':1,'Output':'3 | for (const path of paths) {\n'}]
+        stopped=docker_inspect(module.IMAGE+'@sha256:'+'c'*64,{'Status':'exited','Running':False,
+                               'Health':{'Status':'unhealthy','Log':log}},{})
+        def run(args,**kwargs):
+            if args[:2]==['docker','inspect']:return stopped
+            return self.fake_run(args,**kwargs)
+        stops=[]
+        def compose(*args,**kwargs):
+            if args[0]=='stop':stops.append(kwargs.get('image'))
+            return self.fake_compose(*args,**kwargs)
+        with patch.object(module,'run',run),patch.object(module,'compose',compose),patch.object(module,'start',side_effect=module.Error('unhealthy')) as start:
+            with self.assertRaises(module.Error):module.deploy(D,R)
+            self.assertEqual([c.args[0] for c in start.call_args_list],[module.IMAGE+'@'+D])
+        self.assertEqual(stops,[module.IMAGE+'@'+D])
+        with patch.object(module,'run',run),patch.object(module,'compose',compose),patch.object(module,'start') as start:
+            module.deploy(D,R)
+            start.assert_called_once_with(module.IMAGE+'@'+D)
+        self.assertIn('PADDOCK_IMAGE='+module.IMAGE+'@'+D,(self.app/'.env').read_text())
 
 
 if __name__=='__main__':unittest.main()
