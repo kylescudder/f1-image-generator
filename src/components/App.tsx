@@ -786,7 +786,7 @@ export function AdminGate({
           Your controls.
         </h1>
         <p>
-          The public library is ready. Connect your Clerk account on Herman to
+          The public library is ready. Connect your Clerk account on the host to
           unlock settings, generation, and Emby sync.
         </p>
         <div className="setup-checklist">
@@ -1088,8 +1088,8 @@ function Admin({
               <div className="alert">
                 <CircleHelp size={16} />
                 <span>
-                  Add your OpenRouter API key to Herman’s environment to enable
-                  generation.
+                  Add your OpenRouter API key to the host’s environment to
+                  enable generation.
                 </span>
               </div>
             )}
@@ -1368,8 +1368,8 @@ function Admin({
           </div>
           {!status.configured.emby && (
             <div className="alert">
-              Add your Emby server URL and API key to Herman’s environment, then
-              restart Paddock.
+              Add your Emby server URL and API key to the host’s environment,
+              then restart Paddock.
             </div>
           )}
           <div className="button-row">

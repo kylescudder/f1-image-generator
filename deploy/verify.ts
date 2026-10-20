@@ -1,6 +1,6 @@
 import { closeConnection, connection } from "../server/database.ts";
 
-// Read-only acceptance checks run by Herman against the candidate container
+// Read-only acceptance checks run by the host against the candidate container
 // before the release is acknowledged. They never write to the library.
 const origin = process.env.VERIFY_ORIGIN || "http://127.0.0.1:3000";
 

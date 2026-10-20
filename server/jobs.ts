@@ -242,7 +242,7 @@ export class Jobs {
     const reason = !this.enabled
       ? "Configure Clerk sign-in before generating."
       : !this.inferenceReady
-        ? "Add OPENROUTER_API_KEY on Herman to generate images."
+        ? "Add OPENROUTER_API_KEY on the host to generate images."
         : !(await this.store.settings()).modelId
           ? "Choose an image-generation model in Settings first."
           : "";

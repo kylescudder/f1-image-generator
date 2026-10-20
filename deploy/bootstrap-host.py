@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Prepare the app-specific host pieces. Cloudflare Access is provisioned first.
 
-Run from the reviewed checkout on Herman, as the Colima owner. No credentials
+Run from the reviewed checkout on the host, as the Colima owner, passing the host's
+LocalHostName: python3 -B deploy/bootstrap-host.py <LocalHostName>. No credentials
 are read or printed by this script; it creates a local webhook secret only.
 """
 import json
@@ -9,13 +10,15 @@ import os
 from pathlib import Path
 import secrets
 import subprocess
+import sys
 
 APP = Path(__file__).resolve().parents[1]
 PLATFORM = Path('/Users/kyle/platform')
 
 def main():
-    if subprocess.check_output(['/usr/sbin/scutil', '--get', 'LocalHostName']).decode().strip() != 'herman':
-        raise SystemExit('Run this on Herman as the Colima owner.')
+    host = sys.argv[1] if len(sys.argv) == 2 else None
+    if not host or subprocess.check_output(['/usr/sbin/scutil', '--get', 'LocalHostName']).decode().strip() != host:
+        raise SystemExit('Run this on the host as the Colima owner: bootstrap-host.py <LocalHostName>.')
     if APP != PLATFORM / 'apps/paddock':
         raise SystemExit('Use the reviewed checkout at /Users/kyle/platform/apps/paddock.')
     os.umask(0o077)
@@ -40,7 +43,7 @@ def main():
     with secret.open('rb') as stream:
         subprocess.run(['gh', 'secret', 'set', 'DEPLOY_WEBHOOK_SECRET', '--repo', 'kylescudder/paddock', '--env', 'production'], stdin=stream, check=True)
     subprocess.run(['docker', 'compose', '-f', 'deploy/compose.deploy-hook.yaml', '--env-file', '.env.deploy-hook', 'up', '-d', '--wait'], cwd=APP, check=True)
-    subprocess.run(['python3', '-B', 'deploy/install-launchd.py'], cwd=APP, check=True)
+    subprocess.run(['python3', '-B', 'deploy/host-deploy.py', '--install', host], cwd=APP, check=True)
     print('Host receiver, protected runtime template, signing secret, and LaunchAgent are prepared.')
     print('Complete the Cloudflare Access/hostname steps in deploy/README.md before enabling DEPLOY_ENABLED.')
 

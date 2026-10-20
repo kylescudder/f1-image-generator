@@ -1,7 +1,7 @@
 name: paddock
 services:
   web:
-    image: ${PADDOCK_IMAGE:?Select an attested release digest using deploy/herman-deploy.sh}
+    image: ${PADDOCK_IMAGE:?Select an attested release digest using deploy/host-deploy.sh}
     user: "501:20"
     init: true
     restart: unless-stopped

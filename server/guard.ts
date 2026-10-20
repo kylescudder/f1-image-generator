@@ -46,7 +46,7 @@ async function ownerGate(request: Request): Promise<Response | null> {
   if (!configured && !options?.identity)
     return Response.json(
       {
-        error: "Sign-in is not configured. Set the Clerk keys on Herman.",
+        error: "Sign-in is not configured. Set the Clerk keys on the host.",
       },
       { status: 503 },
     );

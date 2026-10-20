@@ -2,7 +2,7 @@
 
 # Paddock
 
-A calendar-aware Formula 1 artwork library for **paddock.thescudders.org**, hosted on Herman. Imports the existing 2025/2026 illustrations and removes the Illustrator overlay step.
+A calendar-aware Formula 1 artwork library for **paddock.thescudders.org**, self-hosted. Imports the existing 2025/2026 illustrations and removes the Illustrator overlay step.
 
 - Season/weekend gallery, full-size viewer, hover/focus copy-image button, stable URLs, PNG downloads and self-contained hybrid SVG masters.
 - Measured Formula1 typography, vector logo, per-venue colours, and current year/round. Normal weekends get two competitive sessions; sprint weekends get four.
@@ -29,7 +29,7 @@ bun run dev
 
 Open **http://localhost:3000**. The gallery works immediately without credentials. Setup downloads matching font families from official F1 assets into ignored `data/fonts/`; production images cache them for offline startup. Fonts are rendered into vector paths and are not served as font files.
 
-For integrations, copy `.env.example` to `.env` and supply environment values locally or on Herman. Never commit `.env` or paste keys into issues/chat.
+For integrations, copy `.env.example` to `.env` and supply environment values locally or on the host. Never commit `.env` or paste keys into issues/chat.
 
 ```sh
 docker exec paddock-db psql -U postgres -c "CREATE DATABASE paddock_test"
@@ -40,7 +40,7 @@ bun run start
 
 Tests refuse to run against any database whose name does not end in `_test`; override the default with `TEST_DATABASE_URL`.
 
-Standalone Docker: `docker compose -f compose.local.yaml up --build -d`. Herman uses root `compose.yaml` with its existing platform network and an attested immutable image.
+Standalone Docker: `docker compose -f compose.local.yaml up --build -d`. The host uses root `compose.yaml` with its existing platform network and an attested immutable image.
 
 ## Clerk and OpenRouter
 
@@ -54,15 +54,15 @@ Original illustrations are raster, even inside Illustrator. SVG masters embed th
 
 ## Emby
 
-Set `EMBY_URL` (reachable from Herman) and an administrator `EMBY_API_KEY`. In **Owner workspace → Emby**, load libraries, select a category (for example **TV shows**), then choose the **Formula 1** TV show. **Inspect episodes** saves this selection and scans only that show across its seasons. Dedicated F1 libraries can use **All episodes in this library**. Suggestions infer the year, venue and session from episode titles and folder/file names, without relying on round or episode numbers. Review the suggestions, save correct mappings, then use **Update Emby now**. Ambiguous matches need an explicit choice. Both seasons are available for mapping.
+Set `EMBY_URL` (reachable from the host) and an administrator `EMBY_API_KEY`. In **Owner workspace → Emby**, load libraries, select a category (for example **TV shows**), then choose the **Formula 1** TV show. **Inspect episodes** saves this selection and scans only that show across its seasons. Dedicated F1 libraries can use **All episodes in this library**. Suggestions infer the year, venue and session from episode titles and folder/file names, without relying on round or episode numbers. Review the suggestions, save correct mappings, then use **Update Emby now**. Ambiguous matches need an explicit choice. Both seasons are available for mapping.
 
 Mappings use persistent event/session identities rather than round numbers. Paddock uploads base64 PNGs to Emby's Primary episode-image endpoint and remembers each rendered version. Failures stay visible and retryable; placeholders and cancelled sessions are not pushed over existing artwork. Keys remain environment-only.
 
 ## Hosting and data
 
-See [Herman deployment](deploy/README.md) and [Herman handoff](docs/herman-handoff.md). GitHub Actions publishes attested multi-platform images; Herman's existing Cloudflare Access → Tunnel → Caddy pattern queues verified deployments with backups and rollback.
+See [host deployment](deploy/README.md) and [host handoff](docs/host-handoff.md). GitHub Actions publishes attested multi-platform images; the host's existing Cloudflare Access → Tunnel → Caddy pattern queues verified deployments with backups and rollback.
 
-State lives in PostgreSQL (`paddock`, via Herman's existing platform database). Generated backgrounds and cached exports live in persistent `data/`. Run one app instance: its in-process queue/scheduler owns inference and calendar checks. Later-season background overrides do not change completed seasons.
+State lives in PostgreSQL (`paddock`, via the host's existing platform database). Generated backgrounds and cached exports live in persistent `data/`. Run one app instance: its in-process queue/scheduler owns inference and calendar checks. Later-season background overrides do not change completed seasons.
 
 ## Sources and checks
 

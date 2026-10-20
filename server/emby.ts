@@ -141,7 +141,7 @@ export class Emby {
   }
   private async request(route: string, init?: RequestInit): Promise<Response> {
     if (!this.configured)
-      throw new Error("Configure EMBY_URL and EMBY_API_KEY on Herman first.");
+      throw new Error("Configure EMBY_URL and EMBY_API_KEY on the host first.");
     const response = await this.fetcher(`${this.baseUrl}${route}`, {
       ...init,
       headers: { "X-Emby-Token": this.key, ...init?.headers },
