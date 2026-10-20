@@ -13,19 +13,10 @@
   ],
   [
     "compose",
-    [
-      "exec",
-      "-T",
-      "web",
-      "bun",
-      "deploy/verify.ts"
-    ],
+    ["exec", "-T", "web", "bun", "deploy/verify.ts"],
     "ghcr.io/kylescudder/paddock@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
   ],
-  [
-    "backup_database",
-    "paddock"
-  ],
+  ["backup_database", "paddock"],
   [
     "run",
     [
