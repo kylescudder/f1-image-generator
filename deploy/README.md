@@ -1,16 +1,28 @@
 # Paddock on the host
 
+## Shared deployment service
+
+This app is registered as `paddock` in the central deployment registry
+`/Users/kyle/platform/deploy-core/apps.json`. LaunchAgent
+`com.kylescudder.deploy-core` runs the single installed engine. Application hooks
+are `deploy/hooks.py`; the receiver, credentials, queues,
+state and database contracts below remain app-specific. Manual deployment uses
+`./deploy/host-deploy.sh sha256:<digest>`.
+
+Engine updates, application registration, failure inspection and service rollback
+are documented in [deploy-core](https://github.com/kylescudder/deploy-core).
+There are no vendored engine files, lock files or sync PRs. Do not install an
+app-specific LaunchAgent. Apply future engine changes once through the central service.
+
+
 Public site: **https://paddock.thescudders.org**. Deploy hook:
 **https://deploy-paddock.thescudders.org/hooks/paddock**.
 
-This follows the current Thursday Office Tracker deployment on the host: GitHub-hosted AMD64/ARM64 builds, an immutable GHCR digest and provenance attestation, Cloudflare Access Service Auth, the existing Tunnel/Caddy `platform-web` network, a restricted queue receiver, and `com.kylescudder.paddock-deploy` running as Colima's owner. It does not install a self-hosted Actions runner or give the receiver a Docker socket.
+This follows the current Thursday Office Tracker deployment on the host: GitHub-hosted AMD64/ARM64 builds, an immutable GHCR digest and provenance attestation, Cloudflare Access Service Auth, the existing Tunnel/Caddy `platform-web` network, a restricted queue receiver, and `com.kylescudder.deploy-core` running as Colima's owner. It does not install a self-hosted Actions runner or give the receiver a Docker socket.
 
 ## Deployer
 
-`deploy/host-deploy.py` holds this app's settings and hooks; the
-shared flow is `deploy/deploy_core.py`, vendored unchanged from
-`kylescudder/deploy-core` (see `deploy/deploy_core.lock`). Change the core
-there and sync it; CI fails if the vendored copy is edited here.
+Application-specific behavior is in `hooks.py`; deployment definitions are central.
 
 ## Host setup
 
@@ -23,7 +35,7 @@ cd /Users/kyle/platform/apps/paddock
 python3 -B deploy/bootstrap-host.py <host LocalHostName>
 ```
 
-The bootstrap is resumable. It creates private directories and a signing secret, sends that secret to the repository's `production` environment through stdin, starts the receiver, and installs the LaunchAgent. It preserves existing private files. It creates `.env` with blank integration credentials; copy the approved Clerk, OpenRouter, and Emby configuration from the host's existing secret store when permissions are ready. Until the Clerk keys are set, every admin endpoint is denied and no automatic inference runs. The public gallery works without integration keys.
+The bootstrap is resumable. It creates private directories and a signing secret, sends that secret to the repository's `production` environment through stdin, starts the receiver, and prepares the receiver; register the app centrally. It preserves existing private files. It creates `.env` with blank integration credentials; copy the approved Clerk, OpenRouter, and Emby configuration from the host's existing secret store when permissions are ready. Until the Clerk keys are set, every admin endpoint is denied and no automatic inference runs. The public gallery works without integration keys.
 
 ## Cloudflare
 
@@ -70,9 +82,9 @@ After verifying an image and before replacing the app, the deployer saves a priv
 ```sh
 cd /Users/kyle/platform/apps/paddock
 docker compose --env-file .env ps
-launchctl print gui/501/com.kylescudder.paddock-deploy
+launchctl print gui/501/com.kylescudder.deploy-core
 tail -n 100 state/deploy.log
 ./deploy/host-deploy.sh sha256:<previous-attested-main-digest>
 ```
 
-Host `deploy/` and Compose changes require updating the reviewed host checkout and recreating the receiver/reinstalling the LaunchAgent when relevant; routine app releases run only the independently verified image. Pause releases with `gh variable set DEPLOY_ENABLED --body false --repo kylescudder/paddock`.
+Host `deploy/` and Compose changes require updating the reviewed host checkout and recreating the receiver when relevant; routine app releases run only the independently verified image. Pause releases with `gh variable set DEPLOY_ENABLED --body false --repo kylescudder/paddock`.

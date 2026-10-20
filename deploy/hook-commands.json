@@ -1,0 +1,52 @@
+[
+  [
+    "compose",
+    [
+      "exec",
+      "-T",
+      "web",
+      "bun",
+      "-e",
+      "const r=await fetch('http://127.0.0.1:3000/api/health'); if(!r.ok || !(await r.json()).ok) process.exit(1)"
+    ],
+    "ghcr.io/kylescudder/paddock@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  [
+    "compose",
+    ["exec", "-T", "web", "bun", "deploy/verify.ts"],
+    "ghcr.io/kylescudder/paddock@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+  ],
+  ["backup_database", "paddock"],
+  [
+    "run",
+    [
+      "docker",
+      "run",
+      "--rm",
+      "--read-only",
+      "--cap-drop",
+      "ALL",
+      "--security-opt",
+      "no-new-privileges:true",
+      "--user",
+      "501:20",
+      "--network",
+      "platform-db",
+      "--memory",
+      "128m",
+      "--cpus",
+      "0.5",
+      "--mount",
+      "type=bind,src={PLATFORM}/projects/paddock/owner-password,dst=/run/secrets/database_password,readonly",
+      "--env",
+      "DATABASE_URL=postgres://paddock_owner@postgres:5432/paddock",
+      "--env",
+      "DATABASE_PASSWORD_FILE=/run/secrets/database_password",
+      "--entrypoint",
+      "bun",
+      "ghcr.io/kylescudder/paddock@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+      "/app/server/migrate.ts"
+    ],
+    120
+  ]
+]
