@@ -130,9 +130,9 @@ jobs:
           DIGEST: ${{ steps.manifest.outputs.digest }}
         run: docker buildx imagetools create -t "$IMAGE:main" "$IMAGE@$DIGEST"
 
-  # Asks Herman to deploy the attested digest, then waits for Herman to acknowledge
+  # Asks the host to deploy the attested digest, then waits for the host to acknowledge
   # that it passed acceptance checks and for the public site to report this commit.
-  # Herman verifies the attestation itself, so the webhook secret can only ever trigger a release that this workflow built from main.
+  # The host verifies the attestation itself, so the webhook secret can only ever trigger a release that this workflow built from main.
   deploy:
     needs: publish
     if: vars.DEPLOY_ENABLED == 'true'
@@ -204,10 +204,10 @@ jobs:
             revision=$(curl --fail --silent --max-time 10 --dump-header - --output /dev/null "$HEALTH_URL" \
               | tr -d '\r' | awk -F': ' 'tolower($1) == "x-paddock-revision" {print $2}' || true)
             if [ "$accepted" = deployed ] && [ "$revision" = "$GITHUB_SHA" ]; then
-              echo "Herman accepted $IMAGE@$DIGEST after full checks; production is running $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
+              echo "The host accepted $IMAGE@$DIGEST after full checks; production is running $GITHUB_SHA" >> "$GITHUB_STEP_SUMMARY"
               exit 0
             fi
             sleep 10
           done
-          echo "::error::Production did not complete acceptance for $GITHUB_SHA within 10 minutes (last: ${revision:-none}, acceptance: ${accepted:-none}). Check state/deploy.log on Herman."
+          echo "::error::Production did not complete acceptance for $GITHUB_SHA within 10 minutes (last: ${revision:-none}, acceptance: ${accepted:-none}). Check state/deploy.log on the host."
           exit 1

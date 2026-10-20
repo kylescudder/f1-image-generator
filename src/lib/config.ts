@@ -1,6 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 
-// Clerk keys are runtime environment on Herman, so they are read per request
+// Clerk keys are runtime environment on the host, so they are read per request
 // rather than baked into the client bundle at build time.
 export const getAppConfig = createServerFn({ method: "GET" }).handler(
   async () => {

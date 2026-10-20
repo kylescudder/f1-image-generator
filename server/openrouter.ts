@@ -321,7 +321,7 @@ export class OpenRouter {
   ) {
     if (!this.key)
       throw new Error(
-        "Configure OPENROUTER_API_KEY on Herman before generating backgrounds.",
+        "Configure OPENROUTER_API_KEY on the host before generating backgrounds.",
       );
     let selected = model;
     let provider: Record<string, unknown> | undefined;

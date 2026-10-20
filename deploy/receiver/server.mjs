@@ -1,7 +1,7 @@
 // Paddock deploy webhook receiver. Internet-facing via Cloudflare Tunnel and
 // Caddy, so it has no Docker access: it verifies a signed request and drops it
 // into a spool directory. An event-driven host service picks it up and runs
-// deploy/herman-deploy.sh, which verifies the image attestation itself.
+// deploy/host-deploy.sh, which verifies the image attestation itself.
 import { createHmac, timingSafeEqual, randomUUID } from "node:crypto";
 import {
   readFileSync,
@@ -63,7 +63,7 @@ function parseRequest(body) {
 createServer((request, response) => {
   if (request.method === "GET" && request.url === "/healthz")
     return reply(response, 200, "ok");
-  // Acknowledgement written by Herman only after the candidate passes acceptance checks.
+  // Acknowledgement written by the host only after the candidate passes acceptance checks.
   // Only the revision and the exact image reference are ever exposed.
   if (request.method === "GET" && request.url === "/hooks/paddock") {
     let status = { status: "pending" };

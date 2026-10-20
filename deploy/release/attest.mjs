@@ -1,6 +1,6 @@
 // GitHub documents skipWrite for private, non-Enterprise repositories:
 // https://github.com/actions/toolkit/tree/main/packages/attest#storage
-// Keep the signed bundle in GHCR, where Herman already fetches it independently.
+// Keep the signed bundle in GHCR, where the host already fetches it independently.
 import { attestProvenance } from "@actions/attest";
 import { attachArtifactToImage, getRegistryCredentials } from "@sigstore/oci";
 
