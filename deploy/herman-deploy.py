@@ -194,6 +194,7 @@ def deploy(digest, requested_revision=None):
         raise Error('Use an exact sha256 digest.')
     runtime = private_env(APP / '.env')
     candidate = f'{IMAGE}@{digest}'
+    # compose.yaml requires the image variable, which .env lacks before the first release.
     ids = compose('ps', '-a', '-q', 'web', image=candidate).decode().strip().splitlines()
     if len(ids) > 1:
         raise Error('Expected a single Paddock container.')
