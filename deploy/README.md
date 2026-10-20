@@ -22,7 +22,7 @@ This follows the current Thursday Office Tracker deployment on the host: GitHub-
 
 ## Deployer
 
-`application hooks` holds this app's settings and hooks; the
+Application-specific behavior is in `hooks.py`; deployment definitions are central.
 
 ## Host setup
 
