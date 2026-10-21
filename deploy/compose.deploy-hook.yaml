@@ -6,7 +6,7 @@ name: paddock-deploy-hook
 
 services:
   deploy-hook:
-    image: node:22-alpine@sha256:0a7108bf6c7bf5de370ffb1a3ed6be93d405b43ff159f681a8d18c0e2bc2e402
+    image: node:22-alpine@sha256:ce8d97f7cfc7c5386421eb932df20a29df99b1a7f469f6157d5c9956702ffadc
     command: ["node", "/app/server.mjs"]
     restart: unless-stopped
     user: "${DEPLOY_HOOK_USER:?set DEPLOY_HOOK_USER to the queue owner uid:gid}"
